@@ -34,12 +34,14 @@ df[i] = pd.Series(t)
 # while t hasn't converged, run through an e-m iteration
 converged = False
 while not converged:
+  # initialize count and total
   for (n, (f, e)) in enumerate(bitext):
-    # initialize count and total
     for f_i in f:
       total[f_i] = 0
       for e_j in e:
-        count[(e_j,f_i)] = 0
+        count[(e_j, f_i)] = 0
+
+  for (n, (f, e)) in enumerate(bitext):
     
     # compute normalization
     for e_j in e:
@@ -53,28 +55,30 @@ while not converged:
         count[(e_j,f_i)] += t[(e_j,f_i)]/s_total[e_j]
         total[f_i] += t[(e_j,f_i)]/s_total[e_j]
 
-    # estimate probabilities
+  # estimate probabilities
+  for (n, (f, e)) in enumerate(bitext):
     for e_j in e:
       for f_i in f:
         t[(e_j,f_i)] = count[(e_j,f_i)]/total[f_i]
 
-    # check convergence with previous iteration
-    df[i+1] = pd.Series(t)
-    converged = df[i].equals(df[i+1])
-    i += 1
+  # check convergence with previous iteration
+  df[i+1] = pd.Series(t).round(2)
+  converged = df[i].equals(df[i+1])
+  i += 1
 
-    print(df.head())
+    # print(df.head())
     #takes 831 iterations for 10 words to be aligned
 
 # TODO: fix bug with f_max
-'''
+print(i)
+
+
 for (f, e) in bitext:
   for (j, e_j) in enumerate(e):
-    for (i, f_i) in enumerate(f):
+    for (k, f_i) in enumerate(f):
       # find max probability
       f_max = df[i].loc[e_j].idxmax()
       #print(f_max)
       if f_i == f_max:
-        sys.stdout.write("%i-%i " % (i,j))
+        sys.stdout.write("%i-%i " % (k, j))
   sys.stdout.write("\n")
-'''

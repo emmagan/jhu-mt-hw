@@ -23,23 +23,29 @@ s_total = defaultdict(float)
 df = pd.DataFrame()
 i = 0
 
-# initialize probablity t(e|f) uniformly
+frenchwords = set()
+englishwords = set()
 for (n, (f, e)) in enumerate(bitext):
-  # TODO: should this be set(e) or just e? throughout i am confused :(  
+  for f_i in f:
+    frenchwords.add(f_i)
   for e_i in e:
-    for f_i in f:
-      t[(e_i,f_i)] = 1/len(f)
+    englishwords.add(e_i)
+
+# initialize probablity t(e|f) uniformly
+for f_i in frenchwords:
+  for e_i in englishwords:
+    # TODO: should this be set(e) or just e? throughout i am confused :(
+      t[(e_i,f_i)] = 1/(len(frenchwords) * len(englishwords))
 df[i] = pd.Series(t)
 
 # while t hasn't converged, run through an e-m iteration
 converged = False
-while not converged:
+for j in range(10):
   # initialize count and total
-  for (n, (f, e)) in enumerate(bitext):
-    for f_i in f:
-      total[f_i] = 0
-      for e_j in e:
-        count[(e_j, f_i)] = 0
+  for f_i in frenchwords:
+    total[f_i] = 0
+    for e_j in englishwords:
+      count[(e_j, f_i)] = 0
 
   for (n, (f, e)) in enumerate(bitext):
     
@@ -56,21 +62,19 @@ while not converged:
         total[f_i] += t[(e_j,f_i)]/s_total[e_j]
 
   # estimate probabilities
-  for (n, (f, e)) in enumerate(bitext):
-    for e_j in e:
-      for f_i in f:
-        t[(e_j,f_i)] = count[(e_j,f_i)]/total[f_i]
+  for f_i in frenchwords:
+    for e_j in englishwords:
+      t[(e_j,f_i)] = count[(e_j,f_i)]/total[f_i]
 
   # check convergence with previous iteration
-  df[i+1] = pd.Series(t).round(2)
-  converged = df[i].equals(df[i+1])
-  i += 1
+  df[0] = pd.Series(t)
+  # converged = df[i].equals(df[i+1])
+  # i += 1
 
     # print(df.head())
     #takes 831 iterations for 10 words to be aligned
 
 # TODO: fix bug with f_max
-print(i)
 
 
 for (f, e) in bitext:

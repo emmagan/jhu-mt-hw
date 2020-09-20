@@ -12,6 +12,7 @@ optparser.add_option("-t", "--threshold", dest="threshold", default=0.5, type="f
                      help="Threshold for aligning with Dice's coefficient (default=0.5)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=100000000000, type="int",
                      help="Number of sentences to use for training and alignment")
+optparser.add_option('-i', 'training-iterations', dest="it", default=5, type="int")
 (opts, _) = optparser.parse_args()
 f_data = "%s.%s" % (opts.train, opts.french)
 e_data = "%s.%s" % (opts.train, opts.english)
@@ -31,9 +32,11 @@ frenchwords = set()
 englishwords = set()
 for (n, (f, e)) in enumerate(bitext):
     for f_i in f:
-        frenchwords.add(f_i)
+        if f_i != '':
+            frenchwords.add(f_i)
     for e_i in e:
-        englishwords.add(e_i)
+        if e_i != '':
+            englishwords.add(e_i)
 
 # initialize probablity t(e|f) uniformly
 for f_i in frenchwords:

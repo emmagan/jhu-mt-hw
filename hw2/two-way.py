@@ -47,7 +47,7 @@ df_ef = pd.Series(t_ef)
 
 # while t hasn't converged, run through an e-m iteration
 converged = False
-for i in range(10):
+for i in range(opts.it):
     # initialize count and total
     for f_i in frenchwords:
         total[f_i] = 0
@@ -87,7 +87,7 @@ for e_i in englishwords:
         t_fe[(f_i, e_i)] = 1 / (len(englishwords))
 df_fe = pd.Series(t_fe)
 
-for i in range(10):
+for i in range(opts.it):
     # initialize count and total
     for e_i in englishwords:
         total[e_i] = 0

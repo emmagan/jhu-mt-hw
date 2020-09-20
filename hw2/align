@@ -11,6 +11,7 @@ optparser.add_option("-e", "--english", dest="english", default="e", help="Suffi
 optparser.add_option("-f", "--french", dest="french", default="f", help="Suffix of French filename (default=f)")
 optparser.add_option("-t", "--threshold", dest="threshold", default=0.5, type="float", help="Threshold for aligning with Dice's coefficient (default=0.5)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=100000000000, type="int", help="Number of sentences to use for training and alignment")
+optparser.add_option('-c', "--combination-type", dest='comp', default='intersection')
 (opts, _) = optparser.parse_args()
 f_data = "%s.%s" % (opts.train, opts.french)
 e_data = "%s.%s" % (opts.train, opts.english)
@@ -49,6 +50,10 @@ with open('f_max.csv', mode='r') as ffile:
 for (f, e) in bitext:
   for (i, f_i) in enumerate(f): 
     for (j, e_j) in enumerate(e):
-      if e_j == e_max.get(f_i, '') and f_i == f_max.get(e_j, ''):
-        sys.stdout.write("%i-%i " % (i,j))
+      if (opts.comp == 'union'):
+        if e_j == e_max.get(f_i, '') or f_i == f_max.get(e_j, ''):
+          sys.stdout.write("%i-%i " % (i,j))
+      else:
+        if e_j == e_max.get(f_i, '') and f_i == f_max.get(e_j, ''):
+          sys.stdout.write("%i-%i " % (i,j))
   sys.stdout.write("\n")

@@ -41,7 +41,8 @@ t_prev = pd.Series(t)
 # while t hasn't converged, run through an e-m iteration
 converged = False
 while not converged:
-#for j in range(10):
+  print("it")
+# for j in range(10):
   # initialize count and total
   for e_i in englishwords:
     total[e_i] = 0

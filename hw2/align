@@ -42,7 +42,6 @@ t = pd.read_csv('trained.csv')
 for (f, e) in bitext:
   for (i, f_i) in enumerate(f): 
     for (j, e_j) in enumerate(e):
-      e_max = t[f_i].idxmax()
       if e_j == e_max:
         sys.stdout.write("%i-%i " % (i,j))
   sys.stdout.write("\n")

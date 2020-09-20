@@ -23,8 +23,8 @@ t_fe = defaultdict(float)
 count = defaultdict(float)
 total = defaultdict(int)
 s_total = defaultdict(float)
-df_ef = pd.DataFrame()
-df_fe = pd.DataFrame()
+# df_ef = pd.DataFrame()
+# df_fe = pd.DataFrame()
 i = 0
 
 frenchwords = set()
@@ -39,8 +39,8 @@ for (n, (f, e)) in enumerate(bitext):
 for f_i in frenchwords:
     for e_i in englishwords:
         # TODO: should this be set(e) or just e? throughout i am confused :(
-        t_ef[(e_i, f_i)] = 1 / (len(frenchwords) * len(englishwords))
-df_ef[i] = pd.Series(t_ef)
+        t_ef[(e_i, f_i)] = 1 / (len(frenchwords))
+df_ef = pd.Series(t_ef)
 
 # while t hasn't converged, run through an e-m iteration
 converged = False
@@ -71,7 +71,7 @@ for i in range(10):
             t_ef[(e_j, f_i)] = count[(e_j, f_i)] / total[f_i]
 
     # check convergence with previous iteration
-    df_ef[0] = pd.Series(t_ef)
+    df_ef = pd.Series(t_ef)
     # converged = df[i].equals(df[i+1])
     # i += 1
 
@@ -81,8 +81,8 @@ total.clear()
 for e_i in englishwords:
     for f_i in frenchwords:
         # TODO: should this be set(e) or just e? throughout i am confused :(
-        t_fe[(f_i, e_i)] = 1 / (len(frenchwords) * len(englishwords))
-df_fe[i] = pd.Series(t_fe)
+        t_fe[(f_i, e_i)] = 1 / (len(englishwords))
+df_fe = pd.Series(t_fe)
 
 for i in range(10):
     # initialize count and total
@@ -111,18 +111,32 @@ for i in range(10):
             t_fe[(f_j, e_i)] = count[(f_j, e_i)] / total[e_i]
 
     # check convergence with previous iteration
-    df_fe[0] = pd.Series(t_fe)
+    df_fe = pd.Series(t_fe)
     # converged = df[i].equals(df[i+1])
     # i += 1
 
+f_max = {}
+e_max = {}
+
+for e in englishwords:
+    f_max[e] = df_ef[e].idxmax()
+
+for f in frenchwords:
+    e_max[f] = df_fe[f].idxmax()
+
+intersection = open("two-way-intersection.a", "w")
+union = open("two-way-union.a", "w")
 
 for (f, e) in bitext:
   for (j, e_j) in enumerate(e):
     for (k, f_i) in enumerate(f):
-      # find max probability
-      f_max = df_ef[0].loc[e_j].idxmax()
-      e_max = df_fe[0].loc[f_i].idxmax()
       #print(f_max)
-      if f_i == f_max or e_j == e_max:
-        sys.stdout.write("%i-%i " % (k, j))
-  sys.stdout.write("\n")
+      if f_i == f_max[e_j] or e_j == e_max[f_i]:
+        union.write(str(k) + "-" + str(j) + " ")
+      if f_i == f_max[e_j] and e_j == e_max[f_i]:
+        intersection.write(str(k) + "-" + str(j) + " ")
+  intersection.write("\n")
+  union.write("\n")
+
+intersection.close()
+union.close()

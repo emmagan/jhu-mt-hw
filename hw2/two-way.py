@@ -8,8 +8,6 @@ optparser = optparse.OptionParser()
 optparser.add_option("-d", "--data", dest="train", default="data/hansards", help="Data filename prefix (default=data)")
 optparser.add_option("-e", "--english", dest="english", default="e", help="Suffix of English filename (default=e)")
 optparser.add_option("-f", "--french", dest="french", default="f", help="Suffix of French filename (default=f)")
-optparser.add_option("-t", "--threshold", dest="threshold", default=0.5, type="float",
-                     help="Threshold for aligning with Dice's coefficient (default=0.5)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=100000000000, type="int",
                      help="Number of sentences to use for training and alignment")
 optparser.add_option('-i', 'training-iterations', dest="it", default=5, type="int")
@@ -48,6 +46,7 @@ df_ef = pd.Series(t_ef)
 # while t hasn't converged, run through an e-m iteration
 converged = False
 for i in range(opts.it):
+    print(str(i / (opts.it * 2.0)) + "% completed")
     # initialize count and total
     for f_i in frenchwords:
         total[f_i] = 0
@@ -88,6 +87,7 @@ for e_i in englishwords:
 df_fe = pd.Series(t_fe)
 
 for i in range(opts.it):
+    print(str((i + opts.it) / (opts.it * 2.0)) + "% completed")
     # initialize count and total
     for e_i in englishwords:
         total[e_i] = 0
@@ -123,12 +123,12 @@ e_max = {}
 
 with open('f_max.csv', 'w') as file:
     for e in englishwords:
-        f_max[e] = df_ef[e].idxmax()
+        f_max = df_ef[e].idxmax()
         file.write("%s|%s\n"%(e, f_max[e]))
 
 with open('e_max.csv', 'w') as file:
     for f in frenchwords:
-        e_max[f] = df_fe[f].idxmax()
+        e_max = df_fe[f].idxmax()
         file.write("%s|%s\n"%(f, e_max[f]))
 
 

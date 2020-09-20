@@ -20,7 +20,7 @@ t = defaultdict(float)
 count = defaultdict(float)
 total = defaultdict(int)
 s_total = defaultdict(float)
-df = pd.DataFrame()
+#df = pd.DataFrame()
 i = 0
 
 frenchwords = set()
@@ -31,58 +31,60 @@ for (n, (f, e)) in enumerate(bitext):
   for e_i in e:
     englishwords.add(e_i)
 
-# initialize probablity t(e|f) uniformly
+# initialize probablity t(f|e) uniformly
 for f_i in frenchwords:
   for e_i in englishwords:
-    # TODO: should this be set(e) or just e? throughout i am confused :(
-      t[(e_i,f_i)] = 1/(len(frenchwords) * len(englishwords))
-df[i] = pd.Series(t)
+      t[(f_i,e_i)] = 1/(len(englishwords))
+t_prev = pd.Series(t)
+print(t_prev)
 
 # while t hasn't converged, run through an e-m iteration
 converged = False
-for j in range(10):
+while not converged:
+#for j in range(10):
   # initialize count and total
-  for f_i in frenchwords:
-    total[f_i] = 0
-    for e_j in englishwords:
-      count[(e_j, f_i)] = 0
+  for e_i in englishwords:
+    total[e_i] = 0
+    for f_j in frenchwords:
+      count[(e_i, f_j)] = 0
 
   for (n, (f, e)) in enumerate(bitext):
-    
     # compute normalization
-    for e_j in e:
-      s_total[e_j] = 0
-      for f_i in f:
-        s_total[e_j] += t[(e_j,f_i)]
+    for f_i in f:
+      s_total[f_i] = 0
+      for e_j in e:
+        s_total[f_i] += t[(f_i, e_j)]
 
     # collect counts
-    for e_j in e:
-      for f_i in f:
-        count[(e_j,f_i)] += t[(e_j,f_i)]/s_total[e_j]
-        total[f_i] += t[(e_j,f_i)]/s_total[e_j]
+    for f_i in f:
+      for e_j in e:
+        count[(f_i, e_j)] += t[(f_i, e_j)]/s_total[f_i]
+        total[e_j] += t[(f_i, e_j)]/s_total[f_i]
 
   # estimate probabilities
-  for f_i in frenchwords:
-    for e_j in englishwords:
-      t[(e_j,f_i)] = count[(e_j,f_i)]/total[f_i]
+  for e_i in englishwords:
+    for f_j in frenchwords:
+      t[(f_j, e_i)] = count[(f_j, e_i)]/total[e_i]
 
   # check convergence with previous iteration
-  df[0] = pd.Series(t)
-  # converged = df[i].equals(df[i+1])
-  # i += 1
+  converged = t_prev.equals(pd.Series(t))
+  #print(converged)
+  t_prev = pd.Series(t)
+  i += 1
+  #print(t_prev.head())
 
-    # print(df.head())
-    #takes 831 iterations for 10 words to be aligned
+#print(i)
+#print(t_prev)
 
-# TODO: fix bug with f_max
-
+# save trained model in separate file
+t_prev.to_csv('trained.csv')
 
 for (f, e) in bitext:
-  for (j, e_j) in enumerate(e):
-    for (k, f_i) in enumerate(f):
+  for (j, f_j) in enumerate(f):
+    for (k, e_k) in enumerate(e):
       # find max probability
-      f_max = df[i].loc[e_j].idxmax()
-      #print(f_max)
-      if f_i == f_max:
-        sys.stdout.write("%i-%i " % (k, j))
+      e_max = t_prev[f_i].idxmax()
+      #print(e_max)
+      if e_k == e_max:
+        sys.stdout.write("%i-%i " % (j, k))
   sys.stdout.write("\n")

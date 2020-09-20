@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import optparse
 import sys
+import pandas as pd
 from collections import defaultdict
 
 optparser = optparse.OptionParser()
@@ -12,7 +13,7 @@ optparser.add_option("-n", "--num_sentences", dest="num_sents", default=10000000
 (opts, _) = optparser.parse_args()
 f_data = "%s.%s" % (opts.train, opts.french)
 e_data = "%s.%s" % (opts.train, opts.english)
-
+'''
 sys.stderr.write("Training with Dice's coefficient...")
 bitext = [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))][:opts.num_sents]
 f_count = defaultdict(int)
@@ -34,10 +35,13 @@ for (k, (f_i, e_j)) in enumerate(fe_count.keys()):
   if k % 5000 == 0:
     sys.stderr.write(".")
 sys.stderr.write("\n")
+'''
+t = pd.read_csv('trained.csv')
 
 for (f, e) in bitext:
   for (i, f_i) in enumerate(f): 
     for (j, e_j) in enumerate(e):
-      if dice[(f_i,e_j)] >= opts.threshold:
+      e_max = t[f_i].idxmax()
+      if e_j == e_max:
         sys.stdout.write("%i-%i " % (i,j))
   sys.stdout.write("\n")

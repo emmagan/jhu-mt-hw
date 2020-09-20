@@ -118,25 +118,30 @@ for i in range(10):
 f_max = {}
 e_max = {}
 
-for e in englishwords:
-    f_max[e] = df_ef[e].idxmax()
+with open('f_max.csv', 'w') as file:
+    for e in englishwords:
+        f_max[e] = df_ef[e].idxmax()
+        file.write("%s|%s\n"%(e, f_max[e]))
 
-for f in frenchwords:
-    e_max[f] = df_fe[f].idxmax()
+with open('e_max.csv', 'w') as file:
+    for f in frenchwords:
+        e_max[f] = df_fe[f].idxmax()
+        file.write("%s|%s\n"%(f, e_max[f]))
 
-intersection = open("two-way-intersection.a", "w")
-union = open("two-way-union.a", "w")
 
-for (f, e) in bitext:
-  for (j, e_j) in enumerate(e):
-    for (k, f_i) in enumerate(f):
-      #print(f_max)
-      if f_i == f_max[e_j] or e_j == e_max[f_i]:
-        union.write(str(k) + "-" + str(j) + " ")
-      if f_i == f_max[e_j] and e_j == e_max[f_i]:
-        intersection.write(str(k) + "-" + str(j) + " ")
-  intersection.write("\n")
-  union.write("\n")
-
-intersection.close()
-union.close()
+# intersection = open("two-way-intersection.a", "w")
+# union = open("two-way-union.a", "w")
+#
+# for (f, e) in bitext:
+#   for (j, e_j) in enumerate(e):
+#     for (k, f_i) in enumerate(f):
+#       #print(f_max)
+#       if f_i == f_max[e_j] or e_j == e_max[f_i]:
+#         union.write(str(k) + "-" + str(j) + " ")
+#       if f_i == f_max[e_j] and e_j == e_max[f_i]:
+#         intersection.write(str(k) + "-" + str(j) + " ")
+#   intersection.write("\n")
+#   union.write("\n")
+#
+# intersection.close()
+# union.close()

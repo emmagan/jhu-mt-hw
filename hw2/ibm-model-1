@@ -14,7 +14,7 @@ optparser.add_option("-n", "--num_sentences", dest="num_sents", default=10000000
 f_data = "%s.%s" % (opts.train, opts.french)
 e_data = "%s.%s" % (opts.train, opts.english)
 
-sys.stderr.write("Training with IBM Model 1...")
+# sys.stderr.write("Training with IBM Model 1...")
 bitext = [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))][:opts.num_sents]
 t = defaultdict(float)
 count = defaultdict(float)
@@ -36,7 +36,7 @@ for f_i in frenchwords:
   for e_i in englishwords:
       t[(f_i,e_i)] = 1/(len(englishwords))
 t_prev = pd.Series(t)
-print(t_prev)
+# print(t_prev)
 
 # while t hasn't converged, run through an e-m iteration
 converged = False
@@ -67,7 +67,7 @@ while not converged:
       t[(f_j, e_i)] = count[(f_j, e_i)]/total[e_i]
 
   # check convergence with previous iteration
-  converged = t_prev.equals(pd.Series(t))
+  converged = t_prev.round(4).equals(pd.Series(t).round(4))
   #print(converged)
   t_prev = pd.Series(t)
   i += 1
@@ -79,12 +79,15 @@ while not converged:
 # save trained model in separate file
 t_prev.to_csv('trained.csv')
 
+e_max = {}
+
+for f_j in frenchwords:
+  e_max[f_j] = t_prev[f_j].idxmax()
+
 for (f, e) in bitext:
   for (j, f_j) in enumerate(f):
     for (k, e_k) in enumerate(e):
-      # find max probability
-      e_max = t_prev[f_i].idxmax()
       #print(e_max)
-      if e_k == e_max:
+      if e_k == e_max[f_j]:
         sys.stdout.write("%i-%i " % (j, k))
   sys.stdout.write("\n")

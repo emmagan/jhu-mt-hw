@@ -10,7 +10,7 @@ optparser.add_option("-e", "--english", dest="english", default="e", help="Suffi
 optparser.add_option("-f", "--french", dest="french", default="f", help="Suffix of French filename (default=f)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=100000000000, type="int",
                      help="Number of sentences to use for training and alignment")
-optparser.add_option('-i', 'training-iterations', dest="it", default=5, type="int")
+optparser.add_option('-i', '--training-iterations', dest="it", default=5, type="int")
 (opts, _) = optparser.parse_args()
 f_data = "%s.%s" % (opts.train, opts.french)
 e_data = "%s.%s" % (opts.train, opts.english)

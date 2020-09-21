@@ -1,15 +1,34 @@
-There are three python programs here (`-h` for usage):
+Important python programs (`-h` for usage):
 
--`./align` aligns words.
+-`./align` aligns words. It takes an optional `-c` flag for combination type (union vs. intersection).
 
--`./check-alignments` checks that the entire dataset is aligned, and
-  that there are no out-of-bounds alignment points.
+-`./two-way.py` trains IBM model 1 p(e|f) and p(f|e) and writes the models to e_max.csv and f_max.csv. It take an optional `-i` flag for number of iterations.
 
--`./score-alignments` computes alignment error rate.
+-`./align-model-1` and `./ibm-model-1.py` were used to align and train IBM model 1
+
+-`./align-model-original` is the baseline align starter code.
 
 The commands work in a pipeline. For instance:
 
    > ./align -t 0.9 -n 1000 | ./check | ./grade -n 5
+
+The `trained` directory contains trained models as csv files.
+
+-`model-1-1000.csv` is model 1 p(f|e) trained on 50 iterations and 1000 sentences.
+
+-`e_max.csv` is model 1 p(e|f), used for two-way.
+
+-`f_max.csv` is model 1 p(f|e), used for two-way.
+
+The `alignments` directory contains other alignment files.
+
+-`dice.a` is the baseline
+
+-`model-1.a` is model 1 p(e|f)
+
+-`two-way-intersection.a` is two-way intersection alignment file
+
+-`two-way-intersection.a` is two-way union alignment file
 
 The `data` directory contains a fragment of the Canadian Hansards,
 aligned by Ulrich Germann:

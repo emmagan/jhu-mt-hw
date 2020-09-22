@@ -46,7 +46,7 @@ df_ef = pd.Series(t_ef)
 # while t hasn't converged, run through an e-m iteration
 converged = False
 for i in range(opts.it):
-    print(str(i / (opts.it * 2.0)) + "% completed")
+    print(str(i * 100/ (opts.it * 2.0)) + "% completed")
     # initialize count and total
     for f_i in frenchwords:
         total[f_i] = 0
@@ -87,7 +87,7 @@ for e_i in englishwords:
 df_fe = pd.Series(t_fe)
 
 for i in range(opts.it):
-    print(str((i + opts.it) / (opts.it * 2.0)) + "% completed")
+    print(str((i + opts.it) * 100 / (opts.it * 2.0)) + "% completed")
     # initialize count and total
     for e_i in englishwords:
         total[e_i] = 0
@@ -118,18 +118,24 @@ for i in range(opts.it):
     # converged = df[i].equals(df[i+1])
     # i += 1
 
-f_max = {}
-e_max = {}
-
 with open('f_max.csv', 'w') as file:
     for e in englishwords:
-        f_max = df_ef[e].idxmax()
-        file.write("%s|%s\n"%(e, f_max[e]))
+        f_max = df_ef[e][df_ef[e] >= 0.50].sort_values().index
+        if (len(f_max) == 0):
+            f_max = [df_ef[e].idxmax()]
+        file.write(e)
+        for f in f_max:
+            file.write("|%s"%f)
+        file.write("\n")
 
 with open('e_max.csv', 'w') as file:
     for f in frenchwords:
-        e_max = df_fe[f].idxmax()
-        file.write("%s|%s\n"%(f, e_max[f]))
+        e_max = df_fe[f][df_fe[f] >= 0.50].sort_values().index
+        if (len(e_max) == 0):
+            e_max = [df_fe[f].idxmax()]
+        file.write(f)
+        for e in e_max:
+            file.write("|%s\n"%f)
 
 
 # intersection = open("two-way-intersection.a", "w")

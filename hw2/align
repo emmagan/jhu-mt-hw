@@ -10,7 +10,7 @@ optparser.add_option("-e", "--english", dest="english", default="e", help="Suffi
 optparser.add_option("-f", "--french", dest="french", default="f", help="Suffix of French filename (default=f)")
 optparser.add_option("-t", "--threshold", dest="threshold", default=0.5, type="float", help="Threshold for aligning with Dice's coefficient (default=0.5)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=100000000000, type="int", help="Number of sentences to use for training and alignment")
-optparser.add_option('-c', "--combination-type", dest='comp', default='intersection')
+optparser.add_option('-c', "--combination-type", dest='comp', default='union')
 (opts, _) = optparser.parse_args()
 f_data = "%s.%s" % (opts.train, opts.french)
 e_data = "%s.%s" % (opts.train, opts.english)
@@ -18,12 +18,19 @@ e_data = "%s.%s" % (opts.train, opts.english)
 # sys.stderr.write("Training with Dice's coefficient...")
 bitext = [[sentence.strip().split() for sentence in pair] for pair in zip(open(f_data), open(e_data))][:opts.num_sents]
 
-with open('./trained/f_max.csv', mode='r', encoding='latin-1') as ffile:
-  with open('./trained/e_max.csv', mode='r', encoding='latin-1') as efile:
+f_max = {}
+e_max = {}
+
+with open('./f_max1.csv', mode='r', encoding='latin-1') as ffile:
+  with open('./e_max1.csv', mode='r', encoding='latin-1') as efile:
     freader = csv.reader(ffile, delimiter='|')
     ereader = csv.reader(efile, delimiter='|')
-    f_max = {rows[0]:rows[1] for rows in freader}
-    e_max = {rows[0]:rows[1] for rows in ereader}
+    for rows in freader:
+      if len(rows) == 2:
+        f_max[rows[0]] = rows[1]
+    for rows in ereader:
+      if len(rows) == 2:
+        e_max[rows[0]] = rows[1]
 
 
 for (f, e) in bitext:

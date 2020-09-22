@@ -21,8 +21,8 @@ bitext = [[sentence.strip().split() for sentence in pair] for pair in zip(open(f
 f_max = {}
 e_max = {}
 
-with open('./f_max1.csv', mode='r', encoding='latin-1') as ffile:
-  with open('./e_max1.csv', mode='r', encoding='latin-1') as efile:
+with open('./trained/f_max.csv', mode='r', encoding='latin-1') as ffile:
+  with open('./trained/e_max.csv', mode='r', encoding='latin-1') as efile:
     freader = csv.reader(ffile, delimiter='|')
     ereader = csv.reader(efile, delimiter='|')
     for rows in freader:

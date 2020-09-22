@@ -8,9 +8,10 @@ Important python programs (`-h` for usage):
 
 -`./align-model-original` is the baseline align starter code.
 
-The commands work in a pipeline. For instance:
+Example usage:
 
-   > ./align -t 0.9 -n 1000 | ./check | ./grade -n 5
+   > python ./two-way.py -n 1000 -i 10
+   > python ./align -n 100000 > alignment
 
 The `trained` directory contains trained models as csv files.
 

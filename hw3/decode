@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import optparse
 import sys
-import models
+import models as models
 from collections import namedtuple
 
 optparser = optparse.OptionParser()
@@ -30,39 +30,58 @@ for f in french:
   # Hence all hypotheses in stacks[i] represent translations of 
   # the first i words of the input sentence. You should generalize
   # this so that they can represent translations of *any* i words.
-  hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase")
-  initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
+  hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase, is_original, internal, index")
+  initial_hypothesis = hypothesis(0.0, lm.begin(), None, None, True, False, 0)
   stacks = [{} for _ in f] + [{}]
   stacks[0][lm.begin()] = initial_hypothesis
-  for i, stack in enumerate(stacks[:-1]): 
+  for i, stack in enumerate(stacks[:-1]):
     for h in sorted(stack.values(),key=lambda h: -h.logprob)[:opts.s]: # prune
       #print(h)
       #print(i)
       for j in range(i+1,len(f)+1):
-        if f[i:j] in tm:
-          for phrase in tm[f[i:j]]:
-            logprob = h.logprob + phrase.logprob
-            lm_state = h.lm_state
-            for word in phrase.english.split():
-              (lm_state, word_logprob) = lm.score(lm_state, word)
-              logprob += word_logprob
-            logprob += lm.end(lm_state) if j == len(f) else 0.0
-            new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
+        if i >= h.index and not h.internal:
+          if f[i:j] in tm:
+            for phrase in tm[f[i:j]]:
+              logprob = h.logprob + phrase.logprob
+              lm_state = h.lm_state
+              for word in phrase.english.split():
+                (lm_state, word_logprob) = lm.score(lm_state, word)
+                logprob += word_logprob
+              logprob += lm.end(lm_state) if j == len(f) else 0.0
+              new_hypothesis = hypothesis(logprob, lm_state, h, phrase, True, False, j)
 
-            # check for reordered alignment
-            if (i > 1):
-              reordered = phrase.english + " " + h.phrase.english
-              print(reordered)
-              
-              # score the new phrase? or should it be on the entire reordered phrase?
-              # lm_state = h.lm_state
-              # for word in phrase.english.split():
-              #   (lm_state, word_logprob) = lm.score(lm_state, word)
-              #   logprob += word_logprob
-              # logprob += lm.end(lm_state) if j == len(f) else 0.0
+              if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
+                stacks[j][lm_state] = new_hypothesis
 
-            if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
-              stacks[j][lm_state] = new_hypothesis 
+              # check for reordered alignment
+              if (i > 0 and h.is_original):
+                # add the first phrase
+                logprob = h.predecessor.logprob + phrase.logprob
+                lm_state = h.predecessor.lm_state
+                for word in phrase.english.split():
+                   (lm_state, word_logprob) = lm.score(lm_state, word)
+                   logprob += word_logprob
+                logprob += lm.end(lm_state) if i == len(f) else 0.0
+
+                offset = len(h.phrase.english.split())
+                new_hypothesis = hypothesis(logprob, lm_state, h.predecessor, phrase, False, True, j - offset)
+
+
+                if lm_state not in stacks[j - offset] or stacks[j - offset][lm_state].logprob < logprob:  # second case is recombination
+                  stacks[j - offset][lm_state] = new_hypothesis
+
+                # add the second phrase
+
+                for word in h.phrase.english.split():
+                  (lm_state, word_logprob) = lm.score(lm_state, word)
+                  logprob += word_logprob
+                logprob += lm.end(lm_state) if j == len(f) else 0.0
+
+                new_hypothesis = hypothesis(logprob, lm_state, new_hypothesis, h.phrase, False, False, j)
+
+                if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob:  # second case is recombination
+                  stacks[j][lm_state] = new_hypothesis
+
   winner = max(stacks[-1].values(), key=lambda h: h.logprob)
   def extract_english(h): 
     return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)

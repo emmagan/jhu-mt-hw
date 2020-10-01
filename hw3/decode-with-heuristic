@@ -76,7 +76,7 @@ for f in french:
                         logprob += lm.end(lm_state) if j == len(f) else 0.0
                         new_hypothesis = hypothesis(logprob, lm_state, h, phrase, logprob + total_heuristic_logprob)
 
-                        if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob:
+                        if lm_state not in stacks[j] or stacks[j][lm_state].heuristic < logprob + total_heuristic_logprob:
                             stacks[j][lm_state] = new_hypothesis
 
                         backward = h
@@ -106,7 +106,7 @@ for f in french:
                                 previous = new_hypothesis
                             parent_hypotheses.reverse()
 
-                            if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob:
+                            if lm_state not in stacks[j] or stacks[j][lm_state].heuristic < logprob + total_heuristic_logprob:
                                 stacks[j][lm_state] = new_hypothesis
 
                             backward = backward.predecessor

@@ -11,6 +11,7 @@ optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", hel
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxsize, type="int", help="Number of sentences to decode (default=no limit)")
 optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, type="int", help="Limit on number of translations to consider per phrase (default=1)")
 optparser.add_option("-s", "--stack-size", dest="s", default=1, type="int", help="Maximum stack size (default=1)")
+optparser.add_option("-d", "--distortion-limit", dest="d", default=sys.maxsize, type="int", help="Reordering limit (default=no limit)")
 optparser.add_option("-v", "--verbose", dest="verbose", action="store_true", default=False,  help="Verbose mode (default=off)")
 opts = optparser.parse_args()[0]
 
@@ -81,7 +82,8 @@ for f in french:
 
                         backward = h
                         parent_hypotheses = []
-                        while backward.predecessor is not None:
+                        count = 0
+                        while backward.predecessor is not None and count <= opts.d:
                             # insert the new phrase in between two previous phrases
                             pred = backward.predecessor
                             parent_hypotheses.append(backward)
@@ -110,6 +112,7 @@ for f in french:
                                 stacks[j][lm_state] = new_hypothesis
 
                             backward = backward.predecessor
+                            count += 1
 
     winner = max(stacks[-1].values(), key=lambda h: h.heuristic)
 

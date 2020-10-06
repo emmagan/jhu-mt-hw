@@ -1,33 +1,11 @@
-There are two python programs here (-h for usage):
+There are four python programs here:
 
--`decode` translates input sentences from French to English.
--`grade` computes the model score of a translated sentence.
+-`decode-original` is the baseline decoder
+-`decode` is the beam search swap decoder
+-`decode-with-heuristic` is the beam search swap decoder with future cost analysis
+-`decode-ext` is the beam search swap decoder with future cost + better reordering model
 
-These commands work in a pipeline. For example:
+There is an additional flag (-d) for reordering limits.
+Example usage:
 
-    > python decode | python compute-model-score
-
-There is also a module:
-
--`model.py` implements very simple interfaces for language models
- and translation models, so you don't have to. 
-
-You can finish the assignment without modifying this file at all. 
-You should look at it if you need to understand the interface
-to the translation and language model.
-
-The `data` directory contains files derived from the Canadian Hansards,
-originally aligned by Ulrich Germann:
-
--`input`: French sentences to translate.
-
--`tm`: a phrase-based translation model. Each line is in the form:
-
-    French phrase ||| English phrase ||| log_10(translation_prob)
-
--`lm`: a trigram language model file in ARPA format.
-
-    log_10(ngram_prob)   ngram   log_10(backoff_prob)
-
-The language model and translation model are computed from the data 
-in the align directory, using alignments from the Berkeley aligner.
+    > python decode-ext -k 10 -s 100 -d 5 | python compute-model-score

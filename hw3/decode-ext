@@ -96,7 +96,7 @@ for f in french:
                             new_hypothesis_predecessor = hypothesis(logprob, lm_state, backward.predecessor, phrase, logprob + total_heuristic_logprob)
 
                             # add the rest of the phrases on top of the inserted phrase
-                            correction_factor = (opts.d - count)/opts.d
+                            correction_factor = (count)/opts.d
                             new_hypothesis = None
                             previous = new_hypothesis_predecessor
                             parent_hypotheses.reverse()
@@ -104,7 +104,7 @@ for f in french:
                                 for word in hyp.phrase.english.split():
                                     (lm_state, word_logprob) = lm.score(lm_state, word)
                                     logprob += word_logprob
-                                new_hypothesis = hypothesis(correction_factor+logprob, lm_state, previous, hyp.phrase, logprob + total_heuristic_logprob)
+                                new_hypothesis = hypothesis(logprob - correction_factor, lm_state, previous, hyp.phrase, logprob + total_heuristic_logprob)
                                 previous = new_hypothesis
                             parent_hypotheses.reverse()
 

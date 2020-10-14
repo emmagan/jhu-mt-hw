@@ -197,7 +197,8 @@ class EncoderRNN(nn.Module):
     """
     def __init__(self, input_size, hidden_size):
         super(EncoderRNN, self).__init__()
-        self.hidden_size = hidden_size
+        # hidden_size is twice as big bc bi-directional?
+        self.hidden_size = hidden_size*2
         """ TODO:
         Initilize a word embedding and bi-directional LSTM encoder
         For this assignment, you should *NOT* use nn.LSTM. 
@@ -205,20 +206,23 @@ class EncoderRNN(nn.Module):
         See, for example, https://en.wikipedia.org/wiki/Long_short-term_memory#LSTM_with_a_forget_gate
         You should make your LSTM modular and re-use it in the Decoder.
         """
-        # TODO endcoder init
-        "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-        return output, hidden
-
+        self.input_size = input_size
+        self.embedding = nn.Embedding(input_size, hidden_size)
+        self.left = LSTM(input_size, input_size, hidden_size)
+        self.right = LSTM(input_size, input_size, hidden_size)
 
     def forward(self, input, hidden):
         """runs the forward pass of the encoder
         returns the output and the hidden state
         """
-        # TODO encoder forward
-        "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-        return output, hidden
+        # is there output?? Only the hidden states are needed for decoding
+        embed_L = self.embedding(input)
+        output_L, hidden_L = self.left.forward(embed_L)
+
+        reverse = input.reverse()
+        embed_R = self.embedding(reverse)
+        output_R, hidden_R = self.right.forward(embed_R)
+        return (output_L + output_R, hidden_L + hidden_R)
 
     def get_initial_hidden_state(self):
         return torch.zeros(1, 1, self.hidden_size, device=device)
@@ -429,6 +433,7 @@ def main():
                                            args.train_file)
 
     encoder = EncoderRNN(src_vocab.n_words, args.hidden_size).to(device)
+    '''
     decoder = AttnDecoderRNN(args.hidden_size, tgt_vocab.n_words, dropout_p=0.1).to(device)
 
     # encoder/decoder weights are randomly initilized
@@ -505,7 +510,7 @@ def main():
     translate_and_show_attention("j en suis contente .", encoder, decoder, src_vocab, tgt_vocab)
     translate_and_show_attention("vous etes tres genti@@ ls .", encoder, decoder, src_vocab, tgt_vocab)
     translate_and_show_attention("c est mon hero@@ s ", encoder, decoder, src_vocab, tgt_vocab)
-
+    '''
 
 if __name__ == '__main__':
     main()

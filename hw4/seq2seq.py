@@ -37,8 +37,8 @@ logging.basicConfig(level=logging.DEBUG,
 # we are forcing the use of cpu, if you have access to a gpu, you can set the flag to "cuda"
 # make sure you are very careful if you are using a gpu on a shared cluster/grid, 
 # it can be very easy to confict with other people's jobs.
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cpu")
 
 SOS_token = "<SOS>"
 EOS_token = "<EOS>"
@@ -134,6 +134,63 @@ def tensors_from_pair(src_vocab, tgt_vocab, pair):
 
 ######################################################################
 
+class LSTMCell(nn.Module):
+    """LSTM to be used for the encoder and decoder"""
+    def __init__(self, embedding_size, hidden_size, context_size):
+        super(LSTMCell, self).__init__()
+        self.forget_gate_input = nn.Linear(in_features=embedding_size, out_features=context_size)
+        self.forget_gate_hidden = nn.Linear(in_features=hidden_size, out_features=context_size)
+
+        self.input_gate_input = nn.Linear(in_features=embedding_size, out_features=context_size)
+        self.input_gate_hidden = nn.Linear(in_features=hidden_size, out_features=context_size)
+
+        self.input_input = nn.Linear(in_features=embedding_size, out_features=context_size)
+        self.input_hidden = nn.Linear(in_features=hidden_size, out_features=context_size)
+
+        self.output_gate_input = nn.Linear(in_features=embedding_size, out_features=hidden_size)
+        self.output_gate_hidden = nn.Linear(in_features=hidden_size, out_features=hidden_size)
+
+    def forward(self, x, previous_hidden, previous_context):
+        forget_gate = F.sigmoid(self.forget_gate_input(x) + self.forget_gate_hidden(previous_hidden))
+        context_after_forgetting = torch.mul(previous_context, forget_gate)
+
+        input_gate = F.sigmoid(self.input_gate_input(x) + self.input_gate_hidden(previous_hidden))
+        input_ = F.tanh(self.input_input(x) + self.input_hidden(x))
+        context_input = torch.mul(input_gate, input_)
+
+        context = context_input + context_after_forgetting
+
+        output_gate = F.sigmoid(self.output_gate_input(x) + self.output_gate_hidden(previous_hidden))
+
+        hidden = torch.mul(output_gate, F.tanh(context))
+
+        return (hidden, context)
+
+
+class LSTM(nn.Module):
+    """LSTM to be used for the encoder and decoder
+            This will be a single direction LSTM that we will stack up in the encoder
+    """
+    def __init__(self, input_size, embedding_size, hidden_size):
+        super(LSTM, self).__init__()
+        self.input_size = input_size
+        context_size = hidden_size
+
+        self.cells = [LSTMCell(embedding_size=embedding_size, hidden_size=hidden_size, context_size=context_size) for _ in range(input_size)]
+
+        self.initial_hidden = torch.tensor([0] * hidden_size)
+        self.initial_context = torch.tensor([0] * context_size)
+
+    def forward(self, X):
+        hiddens = [self.initial_hidden]
+        context = self.initial_context
+        for i in range(self.input_size):
+            previous_hidden = hiddens[-1]
+            (new_hidden, context) = self.cells[i].forward(X[i], previous_hidden, context)
+            hiddens.append(new_hidden)
+
+        return hiddens
+
 
 class EncoderRNN(nn.Module):
     """the class for the enoder RNN
@@ -141,12 +198,14 @@ class EncoderRNN(nn.Module):
     def __init__(self, input_size, hidden_size):
         super(EncoderRNN, self).__init__()
         self.hidden_size = hidden_size
-        """Initilize a word embedding and bi-directional LSTM encoder
+        """ TODO:
+        Initilize a word embedding and bi-directional LSTM encoder
         For this assignment, you should *NOT* use nn.LSTM. 
         Instead, you should implement the equations yourself.
         See, for example, https://en.wikipedia.org/wiki/Long_short-term_memory#LSTM_with_a_forget_gate
         You should make your LSTM modular and re-use it in the Decoder.
         """
+        # TODO endcoder init
         "*** YOUR CODE HERE ***"
         raise NotImplementedError
         return output, hidden
@@ -156,6 +215,7 @@ class EncoderRNN(nn.Module):
         """runs the forward pass of the encoder
         returns the output and the hidden state
         """
+        # TODO encoder forward
         "*** YOUR CODE HERE ***"
         raise NotImplementedError
         return output, hidden
@@ -178,6 +238,7 @@ class AttnDecoderRNN(nn.Module):
         
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
+        # TODO decoder init
         "*** YOUR CODE HERE ***"
         raise NotImplementedError
 
@@ -189,7 +250,7 @@ class AttnDecoderRNN(nn.Module):
         
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-        
+        # TODO decoder forward
         "*** YOUR CODE HERE ***"
         raise NotImplementedError
         return log_softmax, hidden, attn_weights
@@ -206,7 +267,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     # make sure the encoder and decoder are in training mode so dropout is applied
     encoder.train()
     decoder.train()
-
+    # TODO train
     "*** YOUR CODE HERE ***"
     raise NotImplementedError
 
@@ -296,7 +357,7 @@ def show_attention(input_sentence, output_words, attentions):
     You plots should include axis labels and a legend.
     you may want to use matplotlib.
     """
-    
+    # TODO vizualize attention
     "*** YOUR CODE HERE ***"
     raise NotImplementedError
 
@@ -396,6 +457,7 @@ def main():
 
     while iter_num < args.n_iters:
         iter_num += 1
+        # TODO implement batching?
         training_pair = tensors_from_pair(src_vocab, tgt_vocab, random.choice(train_pairs))
         input_tensor = training_pair[0]
         target_tensor = training_pair[1]

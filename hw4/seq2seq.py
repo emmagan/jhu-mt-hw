@@ -197,8 +197,6 @@ class EncoderRNN(nn.Module):
     """
     def __init__(self, input_size, hidden_size):
         super(EncoderRNN, self).__init__()
-        # hidden_size is twice as big bc bi-directional?
-        self.hidden_size = hidden_size*2
         """ TODO:
         Initilize a word embedding and bi-directional LSTM encoder
         For this assignment, you should *NOT* use nn.LSTM. 
@@ -210,19 +208,19 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(input_size, hidden_size)
         self.left = LSTM(input_size, input_size, hidden_size)
         self.right = LSTM(input_size, input_size, hidden_size)
+        self.hidden_size = hidden_size*2 # hidden_size is twice as big bc bi-directional?
 
     def forward(self, input, hidden):
         """runs the forward pass of the encoder
         returns the output and the hidden state
         """
-        # is there output?? Only the hidden states are needed for decoding
         embed_L = self.embedding(input)
-        output_L, hidden_L = self.left.forward(embed_L)
+        hidden_L = self.left.forward(embed_L)
 
         reverse = input.reverse()
         embed_R = self.embedding(reverse)
-        output_R, hidden_R = self.right.forward(embed_R)
-        return (output_L + output_R, hidden_L + hidden_R)
+        hidden_R = self.right.forward(embed_R)
+        return hidden_L + hidden_R
 
     def get_initial_hidden_state(self):
         return torch.zeros(1, 1, self.hidden_size, device=device)
@@ -243,9 +241,10 @@ class AttnDecoderRNN(nn.Module):
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
         # TODO decoder init
-        "*** YOUR CODE HERE ***"
-        raise NotImplementedError
-
+        self.embedding = nn.Embedding(input_size, hidden_size)
+        self.lstm = LSTM(input_size, input_size, hidden_size)
+        # hidden state * 2 for bidirectional?
+        self.attention = nn.Linear(self.hidden_state * 2, self.max_length);
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
     def forward(self, input, hidden, encoder_outputs):
@@ -254,12 +253,16 @@ class AttnDecoderRNN(nn.Module):
         
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-        # TODO decoder forward
-        "*** YOUR CODE HERE ***"
-        raise NotImplementedError
+        embed = self.embedding(input)
+        embed = self.dropout(embedded)
+
+        # attention is softmax of a(s_{i-1}, h_j)
+        attn_weights = F.softmax(self.attention(embed, hidden))
+
         return log_softmax, hidden, attn_weights
 
     def get_initial_hidden_state(self):
+        # initial hidden states are tanh(W_sh_1) in paper, for now just use zeros
         return torch.zeros(1, 1, self.hidden_size, device=device)
 
 

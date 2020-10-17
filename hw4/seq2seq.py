@@ -167,7 +167,7 @@ class LSTMCell(nn.Module):
         return (hidden, context)
 
 
-class LSTM(nn.Module):
+'''class LSTM(nn.Module):
     """LSTM to be used for the encoder and decoder
             This will be a single direction LSTM that we will stack up in the encoder
     """
@@ -190,12 +190,12 @@ class LSTM(nn.Module):
             hiddens.append(new_hidden)
 
         return hiddens
-
+'''
 
 class EncoderRNN(nn.Module):
     """the class for the enoder RNN
     """
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, embedding_size, hidden_size, embeddings):
         super(EncoderRNN, self).__init__()
         """ TODO:
         Initilize a word embedding and bi-directional LSTM encoder
@@ -204,62 +204,70 @@ class EncoderRNN(nn.Module):
         See, for example, https://en.wikipedia.org/wiki/Long_short-term_memory#LSTM_with_a_forget_gate
         You should make your LSTM modular and re-use it in the Decoder.
         """
-        self.input_size = input_size
-        self.embedding = nn.Embedding(input_size, hidden_size)
-        self.left = LSTM(input_size, input_size, hidden_size)
-        self.right = LSTM(input_size, input_size, hidden_size)
-        self.hidden_size = hidden_size*2 # hidden_size is twice as big bc bi-directional?
+        self.embedding = embeddings
+        self.input_size = embedding_size
+        self.left_to_right = LSTMCell(embedding_size, embedding_size, hidden_size)
+        self.right_to_left = LSTMCell(embedding_size, embedding_size, hidden_size)
+        self.hidden_size = hidden_size #* 2  # since we concatenate the two directions
 
-    def forward(self, input, hidden):
+    def forward(self, input, prev_hidden, prev_context):
         """runs the forward pass of the encoder
         returns the output and the hidden state
-        """
-        embed_L = self.embedding(input)
-        hidden_L = self.left.forward(embed_L)
 
-        reverse = input.reverse()
-        embed_R = self.embedding(reverse)
-        hidden_R = self.right.forward(embed_R)
-        return hidden_L + hidden_R
+        NOTE: For right now, using a unidirectional LSTM bc I am unsure how to do bidirectional taking 1 word at a time
+        """
+        # TODO bidirectional
+        embed_L = self.embedding(input)
+        output, hidden = self.left_to_right.forward(embed_L, prev_hidden, prev_context)
+
+        # reverse = input.reverse()
+        # embed_R = self.embedding(reverse)
+        # hidden_R = self.right_to_left.forward(embed_R)
+        return output, hidden #+ hidden_R
 
     def get_initial_hidden_state(self):
-        return torch.zeros(1, 1, self.hidden_size, device=device)
+        return torch.zeros(1, 1, self.hidden_size, device=device) # TODO: update with trainable parameters
 
 
 class AttnDecoderRNN(nn.Module):
     """the class for the decoder 
     """
-    def __init__(self, hidden_size, output_size, dropout_p=0.1, max_length=MAX_LENGTH):
+    def __init__(self, hidden_size, output_size, embedding, dropout_p=0.1, max_length=MAX_LENGTH):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.dropout_p = dropout_p
         self.max_length = max_length
-
+        self.embedding = embedding
         self.dropout = nn.Dropout(self.dropout_p)
         
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
         # TODO decoder init
-        self.embedding = nn.Embedding(input_size, hidden_size)
-        self.lstm = LSTM(input_size, input_size, hidden_size)
+        self.lstm = LSTMCell(hidden_size + hidden_size, output_size, hidden_size)
         # hidden state * 2 for bidirectional?
-        self.attention = nn.Linear(self.hidden_state * 2, self.max_length);
+        self.attention = nn.Linear(hidden_size + hidden_size, 1) # we can add more layers to the attention
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
-    def forward(self, input, hidden, encoder_outputs):
+    def forward(self, input, hidden, context, encoder_outputs):
         """runs the forward pass of the decoder
         returns the log_softmax, hidden state, and attn_weights
         
         Dropout (self.dropout) should be applied to the word embeddings.
         """
+        outputs_with_context = torch.cat((encoder_outputs, context), 1)
+        attn = self.attention(outputs_with_context)
+        weights = F.softmax(attn)
+
+        encoder_attention_context = weights * encoder_outputs
+
+        # combine this with the input embedding
         embed = self.embedding(input)
-        embed = self.dropout(embedded)
+        embed_with_attention_context = torch.cat((embed, encoder_attention_context), 0)
 
-        # attention is softmax of a(s_{i-1}, h_j)
-        attn_weights = F.softmax(self.attention(embed, hidden))
+        (output, hidden) = self.lstm.forward(embed_with_attention_context, hidden, context)
 
-        return log_softmax, hidden, attn_weights
+        return (output, hidden, weights)
 
     def get_initial_hidden_state(self):
         # initial hidden states are tanh(W_sh_1) in paper, for now just use zeros
@@ -313,8 +321,7 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         decoder_attentions = torch.zeros(max_length, max_length)
 
         for di in range(max_length):
-            decoder_output, decoder_hidden, decoder_attention = decoder(
-                decoder_input, decoder_hidden, encoder_outputs)
+            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
             decoder_attentions[di] = decoder_attention.data
             topv, topi = decoder_output.data.topk(1)
             if topi.item() == EOS_index:
@@ -417,6 +424,7 @@ def main():
                     help='output file for test translations')
     ap.add_argument('--load_checkpoint', nargs=1,
                     help='checkpoint file to start from')
+    ap.add_argument('--embedding_size', default=64, type=int)
 
     args = ap.parse_args()
 
@@ -435,10 +443,11 @@ def main():
                                            args.tgt_lang,
                                            args.train_file)
 
-    encoder = EncoderRNN(src_vocab.n_words, args.hidden_size).to(device)
+    input_embeddings = nn.Embedding(src_vocab.n_words, embedding_dim = args.embedding_size)
+    output_embeddings = nn.Embedding(tgt_vocab.n_words, embedding_dim = args.embedding_size)
+    encoder = EncoderRNN(args.embedding_size, args.hidden_size, input_embeddings).to(device)
+    decoder = AttnDecoderRNN(args.hidden_size, tgt_vocab.n_words, output_embeddings, dropout_p=0.1).to(device)
     '''
-    decoder = AttnDecoderRNN(args.hidden_size, tgt_vocab.n_words, dropout_p=0.1).to(device)
-
     # encoder/decoder weights are randomly initilized
     # if checkpointed, load saved weights
     if args.load_checkpoint is not None:

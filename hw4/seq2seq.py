@@ -37,8 +37,11 @@ logging.basicConfig(level=logging.DEBUG,
 # we are forcing the use of cpu, if you have access to a gpu, you can set the flag to "cuda"
 # make sure you are very careful if you are using a gpu on a shared cluster/grid, 
 # it can be very easy to confict with other people's jobs.
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#device = torch.device("cpu")
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# lol I am in the rare situation where my device is available but is too old to use with pycharm
+
+device = torch.device("cpu")
 
 SOS_token = "<SOS>"
 EOS_token = "<EOS>"
@@ -151,46 +154,32 @@ class LSTMCell(nn.Module):
         self.output_gate_hidden = nn.Linear(in_features=hidden_size, out_features=hidden_size)
 
     def forward(self, x, previous_hidden, previous_context):
-        forget_gate = F.sigmoid(self.forget_gate_input(x) + self.forget_gate_hidden(previous_hidden))
+        x = x.view(1, -1)
+        previous_hidden = previous_hidden.view(1, -1)
+        previous_context = previous_context.view(1, -1)
+
+        # print(x.shape)
+        # print(previous_hidden.shape)
+        # print(previous_context.shape)
+
+        forget_gate = torch.sigmoid(self.forget_gate_input(x) + self.forget_gate_hidden(previous_hidden))
         context_after_forgetting = torch.mul(previous_context, forget_gate)
 
-        input_gate = F.sigmoid(self.input_gate_input(x) + self.input_gate_hidden(previous_hidden))
-        input_ = F.tanh(self.input_input(x) + self.input_hidden(x))
+        input_gate = torch.sigmoid(self.input_gate_input(x) + self.input_gate_hidden(previous_hidden))
+        input_ = torch.tanh(self.input_input(x) + self.input_hidden(previous_hidden))
         context_input = torch.mul(input_gate, input_)
 
         context = context_input + context_after_forgetting
 
-        output_gate = F.sigmoid(self.output_gate_input(x) + self.output_gate_hidden(previous_hidden))
+        output_gate = torch.sigmoid(self.output_gate_input(x) + self.output_gate_hidden(previous_hidden))
 
-        hidden = torch.mul(output_gate, F.tanh(context))
+        # print(context.shape)
+        # print(output_gate.shape)
 
-        return (hidden, context)
+        hidden = torch.mul(output_gate, torch.tanh(context))
 
+        return hidden, context
 
-'''class LSTM(nn.Module):
-    """LSTM to be used for the encoder and decoder
-            This will be a single direction LSTM that we will stack up in the encoder
-    """
-    def __init__(self, input_size, embedding_size, hidden_size):
-        super(LSTM, self).__init__()
-        self.input_size = input_size
-        context_size = hidden_size
-
-        self.cells = [LSTMCell(embedding_size=embedding_size, hidden_size=hidden_size, context_size=context_size) for _ in range(input_size)]
-
-        self.initial_hidden = torch.tensor([0] * hidden_size)
-        self.initial_context = torch.tensor([0] * context_size)
-
-    def forward(self, X):
-        hiddens = [self.initial_hidden]
-        context = self.initial_context
-        for i in range(self.input_size):
-            previous_hidden = hiddens[-1]
-            (new_hidden, context) = self.cells[i].forward(X[i], previous_hidden, context)
-            hiddens.append(new_hidden)
-
-        return hiddens
-'''
 
 class EncoderRNN(nn.Module):
     """the class for the enoder RNN
@@ -206,23 +195,25 @@ class EncoderRNN(nn.Module):
         """
         self.embedding = embeddings
         self.input_size = embedding_size
-        self.left_to_right = LSTMCell(embedding_size, embedding_size, hidden_size)
-        self.right_to_left = LSTMCell(embedding_size, embedding_size, hidden_size)
+        self.hidden_size = hidden_size
+        self.left_to_right = LSTMCell(embedding_size, hidden_size, hidden_size)
+        self.right_to_left = LSTMCell(embedding_size, hidden_size, hidden_size)
         self.hidden_size = hidden_size #* 2  # since we concatenate the two directions
 
-    def forward(self, input, prev_hidden, prev_context):
+    def forward(self, x, prev_hidden, prev_context):
         """runs the forward pass of the encoder
         returns the output and the hidden state
 
         NOTE: For right now, using a unidirectional LSTM bc I am unsure how to do bidirectional taking 1 word at a time
         """
         # TODO bidirectional
-        embed_L = self.embedding(input)
+        embed_L = self.embedding(x)
         output, hidden = self.left_to_right.forward(embed_L, prev_hidden, prev_context)
 
         # reverse = input.reverse()
         # embed_R = self.embedding(reverse)
         # hidden_R = self.right_to_left.forward(embed_R)
+
         return output, hidden #+ hidden_R
 
     def get_initial_hidden_state(self):
@@ -232,7 +223,7 @@ class EncoderRNN(nn.Module):
 class AttnDecoderRNN(nn.Module):
     """the class for the decoder 
     """
-    def __init__(self, hidden_size, output_size, embedding, dropout_p=0.1, max_length=MAX_LENGTH):
+    def __init__(self, hidden_size, output_size, embedding_size, embedding, dropout_p=0.1, max_length=MAX_LENGTH):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -240,34 +231,52 @@ class AttnDecoderRNN(nn.Module):
         self.max_length = max_length
         self.embedding = embedding
         self.dropout = nn.Dropout(self.dropout_p)
+
+        self.softmax = nn.Softmax()
         
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
-        # TODO decoder init
-        self.lstm = LSTMCell(hidden_size + hidden_size, output_size, hidden_size)
+        self.lstm = LSTMCell(hidden_size + embedding_size, hidden_size, hidden_size)
         # hidden state * 2 for bidirectional?
         self.attention = nn.Linear(hidden_size + hidden_size, 1) # we can add more layers to the attention
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
-    def forward(self, input, hidden, context, encoder_outputs):
+    def forward(self, _input, hidden, context, encoder_outputs):
         """runs the forward pass of the decoder
         returns the log_softmax, hidden state, and attn_weights
         
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-        outputs_with_context = torch.cat((encoder_outputs, context), 1)
-        attn = self.attention(outputs_with_context)
-        weights = F.softmax(attn)
+        _in = _input.view(-1)
 
-        encoder_attention_context = weights * encoder_outputs
+        context = context.view(-1, self.hidden_size)
+
+        broadcast = torch.cat([context] * encoder_outputs.size()[0])
+
+        print(broadcast.shape)
+        print(encoder_outputs.shape)
+
+        outputs_with_context = torch.cat((encoder_outputs, broadcast), 1)
+        attn = self.attention(outputs_with_context)
+        weights = self.softmax(attn).view(encoder_outputs.shape[0], -1)
+
+        encoder_attention_context = torch.sum(torch.mul(encoder_outputs, weights), dim=0)
 
         # combine this with the input embedding
-        embed = self.embedding(input)
+        embed = self.embedding(_in).view(-1)
+
         embed_with_attention_context = torch.cat((embed, encoder_attention_context), 0)
 
-        (output, hidden) = self.lstm.forward(embed_with_attention_context, hidden, context)
+        # print(embed_with_attention_context.shape)
+        # print(hidden.shape)
+        # print(context.shape)
 
-        return (output, hidden, weights)
+        (output, new_hidden) = self.lstm.forward(embed_with_attention_context, hidden, context)
+
+        # print(output.shape)
+        # print(hidden.shape)
+
+        return (self.out(output), output, new_hidden, weights)
 
     def get_initial_hidden_state(self):
         # initial hidden states are tanh(W_sh_1) in paper, for now just use zeros
@@ -277,16 +286,54 @@ class AttnDecoderRNN(nn.Module):
 ######################################################################
 
 def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, max_length=MAX_LENGTH):
-    encoder_hidden = encoder.get_initial_hidden_state()
+
+    optimizer.zero_grad()
 
     # make sure the encoder and decoder are in training mode so dropout is applied
     encoder.train()
     decoder.train()
-    # TODO train
     "*** YOUR CODE HERE ***"
-    raise NotImplementedError
+    input_length = input_tensor.shape[0]
+    encoder_hidden = encoder.get_initial_hidden_state()
+    encoder_hiddens = torch.zeros(max_length, encoder.hidden_size)
 
-    return loss.item() 
+    encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
+
+    for ei in range(input_length):
+        encoder_output, next_encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei - 1 if ei - 1 > 0 else 0], encoder_hiddens[ei])
+        encoder_hiddens[ei + 1] += next_encoder_hidden.reshape(-1)
+        encoder_outputs[ei] += encoder_output[0, 0]
+
+    decoder_input = torch.tensor([[SOS_index]], device=device)
+    decoder_output = torch.zeros(decoder.hidden_size)
+
+    decoder_hidden = encoder_hidden
+
+    decoded_words = []
+    decoder_attentions = torch.zeros(max_length, max_length)
+
+    total_loss = 0
+
+    for di in range(len(target_tensor)):
+        decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_output, decoder_hidden, encoder_outputs)
+
+        # print("decoder")
+        # print(decoder_output.shape)
+        # print(decoder_hidden.shape)
+
+        correct_word = target_tensor[di]
+
+        # print(correct_word.shape)
+        # print(decoder_one_hot.shape)
+
+        loss = criterion(decoder_one_hot, correct_word)
+        loss.backward(retain_graph=True)
+        total_loss += loss.item()
+
+        _, decoder_input = correct_word.data.topk(1) # i think??
+
+    optimizer.step()
+    return total_loss
 
 
 
@@ -443,11 +490,13 @@ def main():
                                            args.tgt_lang,
                                            args.train_file)
 
-    input_embeddings = nn.Embedding(src_vocab.n_words, embedding_dim = args.embedding_size)
-    output_embeddings = nn.Embedding(tgt_vocab.n_words, embedding_dim = args.embedding_size)
+    input_embeddings = nn.Embedding(src_vocab.n_words, embedding_dim=args.embedding_size)
+    output_embeddings = nn.Embedding(tgt_vocab.n_words, embedding_dim=args.embedding_size)
     encoder = EncoderRNN(args.embedding_size, args.hidden_size, input_embeddings).to(device)
-    decoder = AttnDecoderRNN(args.hidden_size, tgt_vocab.n_words, output_embeddings, dropout_p=0.1).to(device)
-    '''
+    decoder = AttnDecoderRNN(args.hidden_size, tgt_vocab.n_words, args.embedding_size, output_embeddings, dropout_p=0.1).to(device)
+
+    torch.autograd.set_detect_anomaly(True)
+
     # encoder/decoder weights are randomly initilized
     # if checkpointed, load saved weights
     if args.load_checkpoint is not None:
@@ -478,6 +527,10 @@ def main():
         training_pair = tensors_from_pair(src_vocab, tgt_vocab, random.choice(train_pairs))
         input_tensor = training_pair[0]
         target_tensor = training_pair[1]
+        embedded_targets = torch.zeros((target_tensor.shape[0], args.embedding_size))
+        one_hot_targets = torch.zeros((target_tensor.shape[0], tgt_vocab.n_words))
+        for ti in range(target_tensor.shape[1]):
+            one_hot_targets[ti, target_tensor[ti]] = 1
         loss = train(input_tensor, target_tensor, encoder,
                      decoder, optimizer, criterion)
         print_loss_total += loss
@@ -522,7 +575,7 @@ def main():
     translate_and_show_attention("j en suis contente .", encoder, decoder, src_vocab, tgt_vocab)
     translate_and_show_attention("vous etes tres genti@@ ls .", encoder, decoder, src_vocab, tgt_vocab)
     translate_and_show_attention("c est mon hero@@ s ", encoder, decoder, src_vocab, tgt_vocab)
-    '''
+
 
 if __name__ == '__main__':
     main()

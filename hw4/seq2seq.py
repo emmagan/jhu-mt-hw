@@ -155,7 +155,7 @@ class LSTMCell(nn.Module):
 
     def forward(self, x, previous_hidden, previous_context):
         x = x.view(1, -1)
-        previous_hidden = previous_hidden.view(1, -1)
+        # previous_hidden = previous_hidden.view(1, -1)
         previous_context = previous_context.view(1, -1)
 
         # print(x.shape)
@@ -248,19 +248,20 @@ class AttnDecoderRNN(nn.Module):
         Dropout (self.dropout) should be applied to the word embeddings.
         """
         _in = _input.view(-1)
-
         context = context.view(-1, self.hidden_size)
 
         broadcast = torch.cat([context] * encoder_outputs.size()[0])
 
-        print(broadcast.shape)
-        print(encoder_outputs.shape)
+        # print(broadcast.shape)
+        # print(encoder_outputs.shape)
 
         outputs_with_context = torch.cat((encoder_outputs, broadcast), 1)
         attn = self.attention(outputs_with_context)
         weights = self.softmax(attn).view(encoder_outputs.shape[0], -1)
 
-        encoder_attention_context = torch.sum(torch.mul(encoder_outputs, weights), dim=0)
+        encoder_attention_context = torch.mm(encoder_outputs.T, weights).view(-1)
+
+        # print(encoder_attention_context.shape)
 
         # combine this with the input embedding
         embed = self.embedding(_in).view(-1)
@@ -297,12 +298,13 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     encoder_hidden = encoder.get_initial_hidden_state()
     encoder_hiddens = torch.zeros(max_length, encoder.hidden_size)
 
-    encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
+    encoder_outputs = torch.zeros((max_length, encoder.hidden_size), requires_grad=True)
 
+    print(input_length)
     for ei in range(input_length):
-        encoder_output, next_encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei - 1 if ei - 1 > 0 else 0], encoder_hiddens[ei])
+        encoder_output, next_encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei].clone(), encoder_hiddens[ei])
         encoder_hiddens[ei + 1] += next_encoder_hidden.reshape(-1)
-        encoder_outputs[ei] += encoder_output[0, 0]
+        encoder_outputs[ei + 1] += encoder_output.reshape(-1)
 
     decoder_input = torch.tensor([[SOS_index]], device=device)
     decoder_output = torch.zeros(decoder.hidden_size)

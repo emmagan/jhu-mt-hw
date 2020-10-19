@@ -160,18 +160,19 @@ class LSTMCell(nn.Module):
 
         # print(x.shape)
         # print(previous_hidden.shape)
-        # print(previous_context.shape)
+        # print(previous_context.dtype)
+        forget_gate = torch.sigmoid(torch.add(self.forget_gate_input(x), self.forget_gate_hidden(previous_hidden)))
+        # print(forget_gate.dtype)
+        context_after_forgetting = previous_context * forget_gate
+        # print(context_after_forgetting.dtype)
 
-        forget_gate = torch.sigmoid(self.forget_gate_input(x) + self.forget_gate_hidden(previous_hidden))
-        context_after_forgetting = torch.mul(previous_context, forget_gate)
-
-        input_gate = torch.sigmoid(self.input_gate_input(x) + self.input_gate_hidden(previous_hidden))
-        input_ = torch.tanh(self.input_input(x) + self.input_hidden(previous_hidden))
+        input_gate = torch.sigmoid(torch.add(self.input_gate_input(x), self.input_gate_hidden(previous_hidden)))
+        input_ = torch.tanh(torch.add(self.input_input(x), self.input_hidden(previous_hidden)))
         context_input = torch.mul(input_gate, input_)
 
-        context = context_input + context_after_forgetting
+        context = torch.add(context_input, context_after_forgetting)
 
-        output_gate = torch.sigmoid(self.output_gate_input(x) + self.output_gate_hidden(previous_hidden))
+        output_gate = torch.sigmoid(torch.add(self.output_gate_input(x), self.output_gate_hidden(previous_hidden)))
 
         # print(context.shape)
         # print(output_gate.shape)
@@ -296,20 +297,25 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     "*** YOUR CODE HERE ***"
     input_length = input_tensor.shape[0]
     encoder_hidden = encoder.get_initial_hidden_state()
-    encoder_hiddens = torch.zeros(max_length, encoder.hidden_size)
+    encoder_hiddens = [torch.zeros(encoder.hidden_size)]
 
-    encoder_outputs = torch.zeros((max_length, encoder.hidden_size), requires_grad=True)
+    encoder_outputs = [torch.zeros(encoder.hidden_size)]#torch.zeros((max_length, encoder.hidden_size), requires_grad=True)
 
     #print(input_length)
     for ei in range(input_length):
-        encoder_output, next_encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei].clone(), encoder_hiddens[ei].clone())
-        encoder_hiddens[ei + 1] += next_encoder_hidden.reshape(-1)
-        encoder_outputs[ei + 1].data += encoder_output.reshape(-1)
+        encoder_output, next_encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei], encoder_hiddens[ei])
+        encoder_hiddens.append(next_encoder_hidden.reshape(-1))
+        output = encoder_output.reshape(-1)
+        encoder_outputs.append(output)
 
     decoder_input = torch.tensor([[SOS_index]], device=device)
     decoder_output = torch.zeros(decoder.hidden_size)
 
     decoder_hidden = encoder_hidden
+
+    encoder_outputs_ = torch.zeros((max_length, encoder.hidden_size))
+    for i in range(len(encoder_outputs)):
+        encoder_outputs_[i] = encoder_outputs[i]
 
     decoded_words = []
     decoder_attentions = torch.zeros(max_length, max_length)
@@ -317,7 +323,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     total_loss = 0
 
     for di in range(len(target_tensor)):
-        decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_output, decoder_hidden, encoder_outputs)
+        decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_output, decoder_hidden, encoder_outputs_)
 
         # print("decoder")
         # print(decoder_output.shape)
@@ -328,7 +334,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
         # print(correct_word.shape)
         # print(decoder_one_hot.shape)
 
-        loss = criterion(decoder_one_hot, correct_word)
+        loss = criterion(F.softmax(decoder_one_hot), correct_word)
         loss.backward(retain_graph=True)
         total_loss += loss.item()
 

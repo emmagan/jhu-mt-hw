@@ -358,20 +358,21 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
 
         for ei in range(input_length):
-            encoder_output, encoder_hidden = encoder(input_tensor[ei],
-                                                     encoder_hidden)
-            encoder_outputs[ei] += encoder_output[0, 0]
+            encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei].clone(), encoder_hidden)
+            encoder_outputs[ei + 1] += encoder_output.reshape(-1)
+            #encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_hidden)
+            #encoder_outputs[ei] += encoder_output[0, 0]
 
         decoder_input = torch.tensor([[SOS_index]], device=device)
 
         decoder_hidden = encoder_hidden
-
+        decoder_output = torch.zeros(decoder.hidden_size)
         decoded_words = []
         decoder_attentions = torch.zeros(max_length, max_length)
 
         for di in range(max_length):
-            decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_hidden, encoder_outputs)
-            decoder_attentions[di] = decoder_attention.data
+            decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_output, decoder_hidden, encoder_outputs)
+            decoder_attentions[di] = decoder_attention.data.squeeze()
             topv, topi = decoder_output.data.topk(1)
             if topi.item() == EOS_index:
                 decoded_words.append(EOS_token)

@@ -300,11 +300,11 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
 
     encoder_outputs = torch.zeros((max_length, encoder.hidden_size), requires_grad=True)
 
-    print(input_length)
+    #print(input_length)
     for ei in range(input_length):
-        encoder_output, next_encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei].clone(), encoder_hiddens[ei])
+        encoder_output, next_encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei].clone(), encoder_hiddens[ei].clone())
         encoder_hiddens[ei + 1] += next_encoder_hidden.reshape(-1)
-        encoder_outputs[ei + 1] += encoder_output.reshape(-1)
+        encoder_outputs[ei + 1].data += encoder_output.reshape(-1)
 
     decoder_input = torch.tensor([[SOS_index]], device=device)
     decoder_output = torch.zeros(decoder.hidden_size)

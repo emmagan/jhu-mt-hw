@@ -234,6 +234,7 @@ class AttnDecoderRNN(nn.Module):
         self.dropout = nn.Dropout(self.dropout_p)
 
         self.softmax = nn.Softmax()
+        self.logSoftmax = nn.LogSoftmax()
         
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
@@ -278,7 +279,7 @@ class AttnDecoderRNN(nn.Module):
         # print(output.shape)
         # print(hidden.shape)
 
-        return (self.out(output), output, new_hidden, weights)
+        return (self.logSoftmax(self.out(output)), output, new_hidden, weights)
 
     def get_initial_hidden_state(self):
         # initial hidden states are tanh(W_sh_1) in paper, for now just use zeros
@@ -317,8 +318,6 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     for i in range(len(encoder_outputs)):
         encoder_outputs_[i] = encoder_outputs[i]
 
-    decoded_words = []
-    decoder_attentions = torch.zeros(max_length, max_length)
 
     total_loss = 0
 
@@ -334,7 +333,7 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
         # print(correct_word.shape)
         # print(decoder_one_hot.shape)
 
-        loss = criterion(F.softmax(decoder_one_hot), correct_word)
+        loss = criterion(decoder_one_hot, correct_word)
         loss.backward(retain_graph=True)
         total_loss += loss.item()
 
@@ -379,7 +378,9 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         for di in range(max_length):
             decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_output, decoder_hidden, encoder_outputs)
             decoder_attentions[di] = decoder_attention.data.squeeze()
-            topv, topi = decoder_output.data.topk(1)
+            topv, topi = decoder_one_hot.data.topk(1)
+            # print(topv)
+            # print(topi)
             if topi.item() == EOS_index:
                 decoded_words.append(EOS_token)
                 break
@@ -526,6 +527,8 @@ def main():
     # if checkpointed, load saved state
     if args.load_checkpoint is not None:
         optimizer.load_state_dict(state['opt_state'])
+
+    print(EOS_index)
 
     start = time.time()
     print_loss_total = 0  # Reset every args.print_every

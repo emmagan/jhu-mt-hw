@@ -5,7 +5,7 @@
 This code is based on the tutorial by Sean Robertson <https://github.com/spro/practical-pytorch> found here:
 https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
 
-Students *MAY NOT* view the above tutorial or use it as a reference in any way. 
+Students *MAY NOT* view the above tutorial or use it as a reference in any way.
 """
 
 
@@ -18,10 +18,10 @@ import time
 from io import open
 
 import matplotlib
-#if you are running on the gradx/ugradx/ another cluster, 
+#if you are running on the gradx/ugradx/ another cluster,
 #you will need the following line
 #if you run on a local machine, you can comment it out
-matplotlib.use('agg') 
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import torch
@@ -35,13 +35,14 @@ logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s %(message)s')
 
 # we are forcing the use of cpu, if you have access to a gpu, you can set the flag to "cuda"
-# make sure you are very careful if you are using a gpu on a shared cluster/grid, 
+# make sure you are very careful if you are using a gpu on a shared cluster/grid,
 # it can be very easy to confict with other people's jobs.
-#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("is available: ",torch.cuda.is_available())
 
 # lol I am in the rare situation where my device is available but is too old to use with pycharm
 
-device = torch.device("cpu")
+#device = torch.device("cpu")
 
 SOS_token = "<SOS>"
 EOS_token = "<EOS>"
@@ -83,7 +84,7 @@ def split_lines(input_file):
     first src sentence|||first tgt sentence
     second src sentence|||second tgt sentence
     into a list of things like
-    [("first src sentence", "first tgt sentence"), 
+    [("first src sentence", "first tgt sentence"),
      ("second src sentence", "second tgt sentence")]
     """
     logging.info("Reading lines of %s...", input_file)
@@ -189,7 +190,7 @@ class EncoderRNN(nn.Module):
         super(EncoderRNN, self).__init__()
         """ TODO:
         Initilize a word embedding and bi-directional LSTM encoder
-        For this assignment, you should *NOT* use nn.LSTM. 
+        For this assignment, you should *NOT* use nn.LSTM.
         Instead, you should implement the equations yourself.
         See, for example, https://en.wikipedia.org/wiki/Long_short-term_memory#LSTM_with_a_forget_gate
         You should make your LSTM modular and re-use it in the Decoder.
@@ -222,7 +223,7 @@ class EncoderRNN(nn.Module):
 
 
 class AttnDecoderRNN(nn.Module):
-    """the class for the decoder 
+    """the class for the decoder
     """
     def __init__(self, hidden_size, output_size, embedding_size, embedding, dropout_p=0.1, max_length=MAX_LENGTH):
         super(AttnDecoderRNN, self).__init__()
@@ -235,7 +236,7 @@ class AttnDecoderRNN(nn.Module):
 
         self.softmax = nn.Softmax()
         self.logSoftmax = nn.LogSoftmax()
-        
+
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
         self.lstm = LSTMCell(hidden_size + embedding_size, hidden_size, hidden_size)
@@ -246,7 +247,7 @@ class AttnDecoderRNN(nn.Module):
     def forward(self, _input, hidden, context, encoder_outputs):
         """runs the forward pass of the decoder
         returns the log_softmax, hidden state, and attn_weights
-        
+
         Dropout (self.dropout) should be applied to the word embeddings.
         """
         _in = _input.view(-1)
@@ -423,14 +424,25 @@ def translate_random_sentence(encoder, decoder, pairs, src_vocab, tgt_vocab, n=1
 ######################################################################
 
 def show_attention(input_sentence, output_words, attentions):
-    """visualize the attention mechanism. And save it to a file. 
+    """visualize the attention mechanism. And save it to a file.
     Plots should look roughly like this: https://i.stack.imgur.com/PhtQi.png
     You plots should include axis labels and a legend.
     you may want to use matplotlib.
     """
     # TODO vizualize attention
     "*** YOUR CODE HERE ***"
-    raise NotImplementedError
+
+    figure = plt.figure()
+    ax = figure.add_subplot(111)
+    cax = ax.matshow(attentions.numpy(), cmap='gray')
+    figure.colorbar(cax)
+
+    ax.set_xticklabels([''] + input_sentence.split(' ') + [EOS_token], rotation=90)
+    ax.set_yticklabels([''] + output_words)
+
+    plt.show()
+
+
 
 
 def translate_and_show_attention(input_sentence, encoder1, decoder1, src_vocab, tgt_vocab):
@@ -488,7 +500,7 @@ def main():
     # process the training, dev, test files
 
     # Create vocab from training data, or load if checkpointed
-    # also set iteration 
+    # also set iteration
     if args.load_checkpoint is not None:
         state = torch.load(args.load_checkpoint[0])
         iter_num = state['iter_num']

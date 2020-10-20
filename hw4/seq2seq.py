@@ -423,15 +423,13 @@ def translate_random_sentence(encoder, decoder, pairs, src_vocab, tgt_vocab, n=1
 
 ######################################################################
 
-def show_attention(input_sentence, output_words, attentions):
+def show_attention(input_sentence, output_words, attentions, filename):
     """visualize the attention mechanism. And save it to a file.
     Plots should look roughly like this: https://i.stack.imgur.com/PhtQi.png
     You plots should include axis labels and a legend.
     you may want to use matplotlib.
     """
     # TODO vizualize attention
-    "*** YOUR CODE HERE ***"
-
     figure = plt.figure()
     ax = figure.add_subplot(111)
     cax = ax.matshow(attentions.numpy(), cmap='gray')
@@ -440,17 +438,15 @@ def show_attention(input_sentence, output_words, attentions):
     ax.set_xticklabels([''] + input_sentence.split(' ') + [EOS_token], rotation=90)
     ax.set_yticklabels([''] + output_words)
 
-    plt.show()
+    plt.savefig(filename)
 
 
-
-
-def translate_and_show_attention(input_sentence, encoder1, decoder1, src_vocab, tgt_vocab):
+def translate_and_show_attention(input_sentence, encoder1, decoder1, src_vocab, tgt_vocab, filename):
     output_words, attentions = translate(
         encoder1, decoder1, input_sentence, src_vocab, tgt_vocab)
     print('input =', input_sentence)
     print('output =', ' '.join(output_words))
-    show_attention(input_sentence, output_words, attentions)
+    show_attention(input_sentence, output_words, attentions, filename)
 
 
 def clean(strx):
@@ -595,10 +591,10 @@ def main():
             outf.write(clean(sent) + '\n')
 
     # Visualizing Attention
-    translate_and_show_attention("on p@@ eu@@ t me faire confiance .", encoder, decoder, src_vocab, tgt_vocab)
-    translate_and_show_attention("j en suis contente .", encoder, decoder, src_vocab, tgt_vocab)
-    translate_and_show_attention("vous etes tres genti@@ ls .", encoder, decoder, src_vocab, tgt_vocab)
-    translate_and_show_attention("c est mon hero@@ s ", encoder, decoder, src_vocab, tgt_vocab)
+    translate_and_show_attention("on p@@ eu@@ t me faire confiance .", encoder, decoder, src_vocab, tgt_vocab, '1.png')
+    translate_and_show_attention("j en suis contente .", encoder, decoder, src_vocab, tgt_vocab, '2.png')
+    translate_and_show_attention("vous etes tres genti@@ ls .", encoder, decoder, src_vocab, tgt_vocab, '3.png')
+    translate_and_show_attention("c est mon hero@@ s ", encoder, decoder, src_vocab, tgt_vocab, '4.png')
 
 
 if __name__ == '__main__':

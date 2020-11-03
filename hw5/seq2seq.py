@@ -200,20 +200,16 @@ class EncoderRNN(nn.Module):
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(embedding_size, hidden_size)
 
-    def forward(self, X):
+    def forward(self, X, hidden, context):
         """runs the forward pass of the encoder
         returns the output and the hidden state
 
         NOTE: For right now, using a unidirectional LSTM bc I am unsure how to do bidirectional taking 1 word at a time
         """
-        embedded = self.embedding(X)
+        embedded = self.embedding(X.to(torch.long)).view(-1, 1, self.input_size)
 
-        # print(embedded.shape)
-
-        # get dimensions to match?
-        output, (hidden, context) = self.lstm(embedded)
-
-        return output, hidden
+        output, (hidden, context) = self.lstm(embedded, (hidden, context))
+        return output, hidden, context
 
     def get_initial_hidden_state(self):
         return torch.zeros(1, 1, self.hidden_size, device=device) # TODO: update with trainable parameters
@@ -236,9 +232,9 @@ class AttnDecoderRNN(nn.Module):
 
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
-        self.lstm = nn.LSTM(hidden_size + embedding_size, hidden_size)
-        self.attn = nn.Linear(embedding_size + hidden_size, 1) # we can add more layers to the attention
-        self.attn_combine = nn.Linear(hidden_size + hidden_size, hidden_size)
+        self.lstm = nn.LSTM(hidden_size, hidden_size)
+        self.attn = nn.Linear(hidden_size + hidden_size, 1) # we can add more layers to the attention
+        self.attn_combine = nn.Linear(embedding_size + hidden_size, hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
     def forward(self, _input, hidden, context, encoder_outputs):
@@ -247,35 +243,37 @@ class AttnDecoderRNN(nn.Module):
 
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-        embedded = self.embedding(_input)
+        embedded = self.embedding(_input).view(1, 1, -1)
         embedded = self.dropout(embedded)
 
-        print(embedded.shape)
+        encoder_outputs = encoder_outputs.reshape(-1, 15, 256)
+
+        broadcast = torch.ones_like(encoder_outputs) * hidden.reshape(-1)
+
+
+        attn_weights = F.softmax(
+            self.attn(torch.cat((encoder_outputs, broadcast), 2)), dim=1)
+
+        print(attn_weights.shape)
         print(encoder_outputs.shape)
 
-        attn_weights = torch.zeros((embedded.shape[0], encoder_outputs.shape[0]))
+        attn_applied = torch.bmm(attn_weights.reshape(-1, 1, 15), encoder_outputs)
 
+        print(attn_applied.shape)
 
-        for ind in range(embedded.shape[0]):
-            broadcast = torch.ones((encoder_outputs.shape[0], encoder_outputs.shape[1], embedded.shape[2])) * embedded[ind]
-            print(broadcast.shape)
-            temp = self.attn(torch.cat((encoder_outputs, broadcast), dim=2)).reshape(-1)
-            attn_weights[ind] += F.softmax(temp)
+        attn_output = torch.cat((embedded, attn_applied), 2)
+        attn_output = self.attn_combine(attn_output)
 
-        # TODO pick up here
+        output = F.relu(attn_output)
 
-            # attn_weights = F.softmax(self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
-        attn_applied = torch.bmm(attn_weights.unsqueeze(0),
-                                 encoder_outputs.unsqueeze(0))
+        # print(output.shape)
 
-        output = torch.cat((embedded[0], attn_applied[0]), 1)
-        output = self.attn_combine(output).unsqueeze(0)
-
-        output = F.relu(output)
-        output, hidden = self.lstm(output, (hidden, context))
+        output, (hidden, context) = self.lstm(output, (hidden, context))
 
         output = F.log_softmax(self.out(output[0]), dim=1)
-        return output, hidden, attn_weights
+        return output, hidden, context, attn_weights
+
+
     def get_initial_hidden_state(self):
         # initial hidden states are tanh(W_sh_1) in paper, for now just use zeros
         return torch.zeros(1, 1, self.hidden_size, device=device)
@@ -316,48 +314,48 @@ class AttnDecoderRNN(nn.Module):
 
 ######################################################################
 
-def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, max_length=MAX_LENGTH):
+def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, batch_size, max_length=MAX_LENGTH):
+    encoder_hidden = encoder.get_initial_hidden_state()
+    encoder_context= encoder.get_initial_hidden_state()
 
     optimizer.zero_grad()
 
-    # make sure the encoder and decoder are in training mode so dropout is applied
-    encoder.train()
-    decoder.train()
-    input_length = input_tensor.shape[0]
-    encoder_hidden = encoder.get_initial_hidden_state()
-    encoder_hiddens = [torch.zeros(encoder.hidden_size)]
+    input_length = MAX_LENGTH
+    target_length = target_tensor.size(0)
 
-    #print(input_length)
-    encoder_outputs, encoder_hidden = encoder(input_tensor)
+    encoder_outputs = torch.zeros((batch_size, max_length, encoder.hidden_size), device=device)
+
+    print(encoder_outputs[:, 0].shape)
+
+    loss = 0
+
+    for ei in range(input_length):
+        encoder_output, encoder_hidden, encoder_context = encoder(
+            input_tensor[:, ei], encoder_hidden, encoder_context)
+
+
+        encoder_outputs[:, ei] = encoder_output.reshape(batch_size, encoder.hidden_size)
 
     decoder_input = torch.tensor([[SOS_index]], device=device)
-    decoder_output = torch.zeros(decoder.hidden_size)
 
     decoder_hidden = encoder_hidden
+    decoder_context = encoder_context
 
+    for di in range(target_length):
+        decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
+            decoder_input, decoder_hidden, decoder_context, encoder_outputs)
+        topv, topi = decoder_output.topk(1)
+        decoder_input = topi.squeeze().detach()  # detach from history as input
 
-    total_loss = 0
+        loss += criterion(decoder_output, target_tensor[di])
+        if decoder_input.item() == EOS_token:
+            break
 
-    decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(target_tensor, decoder_output, decoder_hidden, encoder_outputs)
-
-    # print("decoder")
-    # print(decoder_output.shape)
-    # print(decoder_hidden.shape)
-
-    correct_words = target_tensor
-
-    # print(correct_word.shape)
-    # print(decoder_one_hot.shape)
-
-    loss = criterion(decoder_one_hot, correct_words)
-    loss.backward(retain_graph=True)
-    total_loss += loss.item()
-
-    _, decoder_input = correct_words.data.topk(1) # i think??
+    loss.backward()
 
     optimizer.step()
-    return total_loss
 
+    return loss.item() / target_length
 
 
 ######################################################################
@@ -375,39 +373,36 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         input_tensor = tensor_from_sentence(src_vocab, sentence)
         input_length = input_tensor.size()[0]
         encoder_hidden = encoder.get_initial_hidden_state()
+        encoder_context = encoder.get_initial_hidden_state()
 
         encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
 
         for ei in range(input_length):
-            encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei].clone(), encoder_hidden)
-            encoder_outputs[ei + 1] += encoder_output.reshape(-1)
-            #encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_hidden)
-            #encoder_outputs[ei] += encoder_output[0, 0]
+            encoder_output, encoder_hidden, encoder_context = encoder(input_tensor[ei], encoder_hidden, encoder_context)
+            encoder_outputs[ei] += encoder_output[0, 0]
 
-        decoder_input = torch.tensor([[SOS_index]], device=device)
+        decoder_input = torch.tensor([[SOS_index]], device=device)  # SOS
 
         decoder_hidden = encoder_hidden
-        decoder_output = torch.zeros(decoder.hidden_size)
+        decoder_context = encoder_context
+
         decoded_words = []
         decoder_attentions = torch.zeros(max_length, max_length)
 
         for di in range(max_length):
-            decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_output, decoder_hidden, encoder_outputs)
+            decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
+                decoder_input, decoder_hidden, decoder_context, encoder_outputs)
             decoder_attentions[di] = decoder_attention.data.squeeze()
-            topv, topi = decoder_one_hot.data.topk(1)
-            # print(topv)
-            # print(topi)
+            topv, topi = decoder_output.data.topk(1)
             if topi.item() == EOS_index:
-                decoded_words.append(EOS_token)
+                decoded_words.append('<EOS>')
                 break
             else:
                 decoded_words.append(tgt_vocab.index2word[topi.item()])
 
             decoder_input = topi.squeeze().detach()
 
-        print(decoder_attentions)
         return decoded_words, decoder_attentions[:di + 1]
-
 
 ######################################################################
 
@@ -506,6 +501,7 @@ def main():
     ap.add_argument('--load_checkpoint', nargs=1,
                     help='checkpoint file to start from')
     ap.add_argument('--embedding_size', default=64, type=int)
+    ap.add_argument('--batch_size', default=10, type=int)
 
     args = ap.parse_args()
 
@@ -560,15 +556,18 @@ def main():
     while iter_num < args.n_iters:
         iter_num += 1
         # TODO implement batching?
-        training_pair = tensors_from_pair(src_vocab, tgt_vocab, random.choice(train_pairs))
-        input_tensor = training_pair[0]
-        target_tensor = training_pair[1]
-        embedded_targets = torch.zeros((target_tensor.shape[0], args.embedding_size))
-        one_hot_targets = torch.zeros((target_tensor.shape[0], tgt_vocab.n_words))
-        for ti in range(target_tensor.shape[1]):
-            one_hot_targets[ti, target_tensor[ti]] = 1
+        batch_pairs = random.sample(train_pairs, args.batch_size)
+        training_pairs = (torch.zeros((args.batch_size, MAX_LENGTH)), torch.zeros((args.batch_size, MAX_LENGTH)))
+        for i in range(args.batch_size):
+            training_pair = tensors_from_pair(src_vocab, tgt_vocab, batch_pairs[i])
+            training_pairs[0][i] += torch.cat((training_pair[0].view(-1), torch.zeros((MAX_LENGTH)).to(torch.long)), 0)[:MAX_LENGTH]
+            training_pairs[1][i] += torch.cat((training_pair[1].view(-1), torch.zeros((MAX_LENGTH)).to(torch.long)), 0)[:MAX_LENGTH]
+
+        input_tensor = training_pairs[0]
+        target_tensor = training_pairs[1]
+
         loss = train(input_tensor, target_tensor, encoder,
-                     decoder, optimizer, criterion)
+                     decoder, optimizer, criterion, args.batch_size)
         print_loss_total += loss
 
         if iter_num % args.checkpoint_every == 0:

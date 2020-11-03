@@ -37,12 +37,12 @@ logging.basicConfig(level=logging.DEBUG,
 # we are forcing the use of cpu, if you have access to a gpu, you can set the flag to "cuda"
 # make sure you are very careful if you are using a gpu on a shared cluster/grid,
 # it can be very easy to confict with other people's jobs.
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("is available: ",torch.cuda.is_available())
 
 # lol I am in the rare situation where my device is available but is too old to use with pycharm
 
-#device = torch.device("cpu")
+device = torch.device("cpu")
 
 SOS_token = "<SOS>"
 EOS_token = "<EOS>"
@@ -200,19 +200,18 @@ class EncoderRNN(nn.Module):
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(embedding_size, hidden_size)
 
-    def forward(self, x, prev_hidden, prev_context):
+    def forward(self, X):
         """runs the forward pass of the encoder
         returns the output and the hidden state
 
         NOTE: For right now, using a unidirectional LSTM bc I am unsure how to do bidirectional taking 1 word at a time
         """
-        embedded = self.embedding(x).view(1, 1, -1)
+        embedded = self.embedding(X)
+
+        # print(embedded.shape)
+
         # get dimensions to match?
-        prev_hidden = prev_hidden.unsqueeze(0)
-        prev_hidden = prev_hidden.unsqueeze(0)
-        prev_context = prev_context.unsqueeze(0)
-        prev_context = prev_context.unsqueeze(0)
-        output, (hidden, context) = self.lstm(embedded, (prev_hidden, prev_context))
+        output, (hidden, context) = self.lstm(embedded)
 
         return output, hidden
 
@@ -238,7 +237,7 @@ class AttnDecoderRNN(nn.Module):
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
         self.lstm = nn.LSTM(hidden_size + embedding_size, hidden_size)
-        self.attn = nn.Linear(hidden_size + hidden_size, 1) # we can add more layers to the attention
+        self.attn = nn.Linear(embedding_size + hidden_size, 1) # we can add more layers to the attention
         self.attn_combine = nn.Linear(hidden_size + hidden_size, hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
@@ -251,10 +250,21 @@ class AttnDecoderRNN(nn.Module):
         embedded = self.embedding(_input)
         embedded = self.dropout(embedded)
 
-        print(embedded[0])
-        print(hidden)
-        attn_weights = F.softmax(
-            self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
+        print(embedded.shape)
+        print(encoder_outputs.shape)
+
+        attn_weights = torch.zeros((embedded.shape[0], encoder_outputs.shape[0]))
+
+
+        for ind in range(embedded.shape[0]):
+            broadcast = torch.ones((encoder_outputs.shape[0], encoder_outputs.shape[1], embedded.shape[2])) * embedded[ind]
+            print(broadcast.shape)
+            temp = self.attn(torch.cat((encoder_outputs, broadcast), dim=2)).reshape(-1)
+            attn_weights[ind] += F.softmax(temp)
+
+        # TODO pick up here
+
+            # attn_weights = F.softmax(self.attn(torch.cat((embedded[0], hidden[0]), 1)), dim=1)
         attn_applied = torch.bmm(attn_weights.unsqueeze(0),
                                  encoder_outputs.unsqueeze(0))
 
@@ -317,44 +327,33 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, m
     encoder_hidden = encoder.get_initial_hidden_state()
     encoder_hiddens = [torch.zeros(encoder.hidden_size)]
 
-    encoder_outputs = [torch.zeros(encoder.hidden_size)]#torch.zeros((max_length, encoder.hidden_size), requires_grad=True)
-
     #print(input_length)
-    for ei in range(input_length):
-        encoder_output, next_encoder_hidden = encoder(input_tensor[ei], encoder_outputs[ei], encoder_hiddens[ei])
-        encoder_hiddens.append(next_encoder_hidden.reshape(-1))
-        output = encoder_output.reshape(-1)
-        encoder_outputs.append(output)
+    encoder_outputs, encoder_hidden = encoder(input_tensor)
 
     decoder_input = torch.tensor([[SOS_index]], device=device)
     decoder_output = torch.zeros(decoder.hidden_size)
 
     decoder_hidden = encoder_hidden
 
-    encoder_outputs_ = torch.zeros((max_length, encoder.hidden_size))
-    for i in range(len(encoder_outputs)):
-        encoder_outputs_[i] = encoder_outputs[i]
-
 
     total_loss = 0
 
-    for di in range(len(target_tensor)):
-        decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(decoder_input, decoder_output, decoder_hidden, encoder_outputs_)
+    decoder_one_hot, decoder_output, decoder_hidden, decoder_attention = decoder(target_tensor, decoder_output, decoder_hidden, encoder_outputs)
 
-        # print("decoder")
-        # print(decoder_output.shape)
-        # print(decoder_hidden.shape)
+    # print("decoder")
+    # print(decoder_output.shape)
+    # print(decoder_hidden.shape)
 
-        correct_word = target_tensor[di]
+    correct_words = target_tensor
 
-        # print(correct_word.shape)
-        # print(decoder_one_hot.shape)
+    # print(correct_word.shape)
+    # print(decoder_one_hot.shape)
 
-        loss = criterion(decoder_one_hot, correct_word)
-        loss.backward(retain_graph=True)
-        total_loss += loss.item()
+    loss = criterion(decoder_one_hot, correct_words)
+    loss.backward(retain_graph=True)
+    total_loss += loss.item()
 
-        _, decoder_input = correct_word.data.topk(1) # i think??
+    _, decoder_input = correct_words.data.topk(1) # i think??
 
     optimizer.step()
     return total_loss

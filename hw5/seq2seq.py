@@ -221,6 +221,7 @@ class AttnDecoderRNN(nn.Module):
     def __init__(self, hidden_size, output_size, embedding_size, embedding, dropout_p=0.1, max_length=MAX_LENGTH):
         super(AttnDecoderRNN, self).__init__()
         self.hidden_size = hidden_size
+        self.embedding_size = embedding_size
         self.output_size = output_size
         self.dropout_p = dropout_p
         self.max_length = max_length
@@ -243,7 +244,8 @@ class AttnDecoderRNN(nn.Module):
 
         Dropout (self.dropout) should be applied to the word embeddings.
         """
-        embedded = self.embedding(_input).view(1, 1, -1)
+
+        embedded = self.embedding(_input.to(torch.long)).view(-1, 1, self.embedding_size)
         embedded = self.dropout(embedded)
 
         encoder_outputs = encoder_outputs.reshape(-1, 15, 256)
@@ -254,23 +256,20 @@ class AttnDecoderRNN(nn.Module):
         attn_weights = F.softmax(
             self.attn(torch.cat((encoder_outputs, broadcast), 2)), dim=1)
 
-        print(attn_weights.shape)
-        print(encoder_outputs.shape)
 
         attn_applied = torch.bmm(attn_weights.reshape(-1, 1, 15), encoder_outputs)
 
-        print(attn_applied.shape)
 
         attn_output = torch.cat((embedded, attn_applied), 2)
         attn_output = self.attn_combine(attn_output)
 
         output = F.relu(attn_output)
 
-        # print(output.shape)
-
         output, (hidden, context) = self.lstm(output, (hidden, context))
 
-        output = F.log_softmax(self.out(output[0]), dim=1)
+        output = F.log_softmax(self.out(output.reshape(-1, 256)), dim=1)
+
+
         return output, hidden, context, attn_weights
 
 
@@ -321,11 +320,9 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, b
     optimizer.zero_grad()
 
     input_length = MAX_LENGTH
-    target_length = target_tensor.size(0)
+    target_length = target_tensor.size(1)
 
     encoder_outputs = torch.zeros((batch_size, max_length, encoder.hidden_size), device=device)
-
-    print(encoder_outputs[:, 0].shape)
 
     loss = 0
 
@@ -336,20 +333,26 @@ def train(input_tensor, target_tensor, encoder, decoder, optimizer, criterion, b
 
         encoder_outputs[:, ei] = encoder_output.reshape(batch_size, encoder.hidden_size)
 
-    decoder_input = torch.tensor([[SOS_index]], device=device)
+    decoder_input = torch.tensor(batch_size * [[SOS_index]], device=device)
 
     decoder_hidden = encoder_hidden
     decoder_context = encoder_context
+
+    # print(target_tensor.shape)
 
     for di in range(target_length):
         decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
             decoder_input, decoder_hidden, decoder_context, encoder_outputs)
         topv, topi = decoder_output.topk(1)
-        decoder_input = topi.squeeze().detach()  # detach from history as input
+        decoder_input = target_tensor[:, di]#topi.squeeze().detach()  # detach from history as input
 
-        loss += criterion(decoder_output, target_tensor[di])
-        if decoder_input.item() == EOS_token:
-            break
+
+        loss += criterion(decoder_output.reshape(batch_size, -1), target_tensor[:, di].to(torch.long))
+
+        # if decoder_input.item() == EOS_index:
+        #     # print("breaking...")
+        #     break
+
 
     loss.backward()
 
@@ -560,8 +563,8 @@ def main():
         training_pairs = (torch.zeros((args.batch_size, MAX_LENGTH)), torch.zeros((args.batch_size, MAX_LENGTH)))
         for i in range(args.batch_size):
             training_pair = tensors_from_pair(src_vocab, tgt_vocab, batch_pairs[i])
-            training_pairs[0][i] += torch.cat((training_pair[0].view(-1), torch.zeros((MAX_LENGTH)).to(torch.long)), 0)[:MAX_LENGTH]
-            training_pairs[1][i] += torch.cat((training_pair[1].view(-1), torch.zeros((MAX_LENGTH)).to(torch.long)), 0)[:MAX_LENGTH]
+            training_pairs[0][i] += torch.cat((training_pair[0].view(-1), EOS_index * torch.ones((MAX_LENGTH)).to(torch.long)), 0)[:MAX_LENGTH]
+            training_pairs[1][i] += torch.cat((training_pair[1].view(-1), EOS_index * torch.ones((MAX_LENGTH)).to(torch.long)), 0)[:MAX_LENGTH]
 
         input_tensor = training_pairs[0]
         target_tensor = training_pairs[1]

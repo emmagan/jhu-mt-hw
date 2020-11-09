@@ -29,6 +29,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from nltk.translate.bleu_score import corpus_bleu
 from torch import optim
+from collections import namedtuple
 
 
 logging.basicConfig(level=logging.DEBUG,
@@ -234,7 +235,8 @@ class AttnDecoderRNN(nn.Module):
         """Initilize your word embedding, decoder LSTM, and weights needed for your attention here
         """
         self.lstm = nn.LSTM(hidden_size, hidden_size)
-        self.attn = nn.Linear(hidden_size + hidden_size, 1) # we can add more layers to the attention
+        self.attn = nn.Linear(hidden_size + hidden_size, hidden_size) # we can add more layers to the attention
+        self.attn2 = nn.Linear(hidden_size, 1)
         self.attn_combine = nn.Linear(embedding_size + hidden_size, hidden_size)
         self.out = nn.Linear(self.hidden_size, self.output_size)
 
@@ -254,7 +256,7 @@ class AttnDecoderRNN(nn.Module):
 
 
         attn_weights = F.softmax(
-            self.attn(torch.cat((encoder_outputs, broadcast), 2)), dim=1)
+            self.attn2(F.relu(self.attn(torch.cat((encoder_outputs, broadcast), 2)))), dim=1)
 
 
         attn_applied = torch.bmm(attn_weights.reshape(-1, 1, 15), encoder_outputs)
@@ -367,6 +369,7 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
     """
     runs tranlsation, returns the output and attention
     """
+    MAX_HYPS = 10
 
     # switch the encoder and decoder to eval mode so they are not applying dropout
     encoder.eval()
@@ -392,20 +395,26 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         decoded_words = []
         decoder_attentions = torch.zeros(max_length, max_length)
 
-        for di in range(max_length):
-            decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(
-                decoder_input, decoder_hidden, decoder_context, encoder_outputs)
-            decoder_attentions[di] = decoder_attention.data.squeeze()
-            topv, topi = decoder_output.data.topk(1)
-            if topi.item() == EOS_index:
-                decoded_words.append('<EOS>')
-                break
-            else:
-                decoded_words.append(tgt_vocab.index2word[topi.item()])
+        hypothesis = namedtuple("hypothesis", "logprob, hidden, context, word, words")
+        initial_hypothesis = hypothesis(0.0, decoder_hidden, decoder_context, SOS_index, [SOS_token])
 
-            decoder_input = topi.squeeze().detach()
+        translations = [[] for _ in range(MAX_HYPS)]
+        map(lambda x: x.append(initial_hypothesis), translations)
 
-        return decoded_words, decoder_attentions[:di + 1]
+        stacks = [{} for _ in range(max_length)] + [{}]
+        stacks[0][[SOS_token]] = initial_hypothesis
+
+        for i, stack in enumerate(stacks[:-1]):
+            for h in sorted(stack.values(), key=lambda h: -h.logprob)[:MAX_HYPS]:
+                decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(h.word, h.hidden, h.context, encoder_outputs)
+                decoder_attentions[i] = decoder_attention.data.squeeze()
+                topv, topi = decoder_output.data.topk(MAX_HYPS) # since we are selecting MAX_HYPS at most, we only need to pick the 10 best from each possible translation
+                for ind in range(len(topi)):
+                    new_hypothesis = hypothesis(topv[ind], decoder_hidden, decoder_context, topi[ind].item(), h.words.append(tgt_vocab.index2word[topi[ind].item()]))
+                    stacks[i + 1][new_hypothesis.words] = new_hypothesis
+        winner = max(stacks[-1].values(), key=lambda h: h.logprob)
+
+        return winner.words, decoder_attentions[:i + 1]
 
 ######################################################################
 
@@ -542,7 +551,7 @@ def main():
     test_pairs = split_lines(args.test_file)
 
     # set up optimization/loss
-    params = list(encoder.parameters()) + list(decoder.parameters())  # .parameters() returns generator
+    params = list(encoder.parameters()) + list(decoder.parameters()) + list(input_embeddings.parameters()) + list(output_embeddings.parameters())  # .parameters() returns generator
     optimizer = optim.Adam(params, lr=args.initial_learning_rate)
     criterion = nn.NLLLoss()
 

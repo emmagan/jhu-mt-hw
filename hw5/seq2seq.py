@@ -416,7 +416,7 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, stack_size, max_
         winner = max(stacks[-1].values(), key=lambda h: h.logprob)
         
         filtered = []
-        i = 0
+        i = 1
         while winner.words[i] != EOS_token and i < MAX_LENGTH:
             filtered.append(winner.words[i])
             i = i+1

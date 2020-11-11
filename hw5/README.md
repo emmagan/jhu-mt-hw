@@ -1,6 +1,6 @@
 Our `seq2seq.py` file contains the encoder-decoder.
 It has the same arguments as the baseline code.
-We added an additional argument, --batch-size, which corresponds to the beam width.
+We added two additional arguments, --batch-size and --stack_size, which corresponds to the batch size and beam width respectively.
 
 Example usage:
 

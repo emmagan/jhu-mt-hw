@@ -414,8 +414,15 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
                     if new_hypothesis.word.item() not in stack or stack[new_hypothesis.word.item()].logprob < new_hypothesis.logprob:  # second case is recombination
                         stacks[i + 1][tgt_vocab.index2word[topi.flatten()[ind].item()]] = new_hypothesis
         winner = max(stacks[-1].values(), key=lambda h: h.logprob)
+        
+        filtered = []
+        i = 0
+        while winner.words[i] != EOS_token and i < MAX_LENGTH:
+            filtered.append(winner.words[i])
+            i = i+1
+        filtered.append(EOS_token)
 
-        return winner.words, decoder_attentions[:i + 1]
+        return filtered, decoder_attentions[:i + 1]
 
 ######################################################################
 
@@ -561,7 +568,6 @@ def main():
     if args.load_checkpoint is not None:
         optimizer.load_state_dict(state['opt_state'])
 
-    print(EOS_index)
 
     start = time.time()
     print_loss_total = 0  # Reset every args.print_every

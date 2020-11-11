@@ -396,13 +396,13 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
         decoder_attentions = torch.zeros(max_length, max_length)
 
         hypothesis = namedtuple("hypothesis", "logprob, hidden, context, word, words")
-        initial_hypothesis = hypothesis(0.0, decoder_hidden, decoder_context, SOS_index, [SOS_token])
+        initial_hypothesis = hypothesis(0.0, decoder_hidden, decoder_context, torch.tensor(SOS_index), [SOS_token])
 
         translations = [[] for _ in range(MAX_HYPS)]
         map(lambda x: x.append(initial_hypothesis), translations)
 
         stacks = [{} for _ in range(max_length)] + [{}]
-        stacks[0][[SOS_token]] = initial_hypothesis
+        stacks[0][SOS_token] = initial_hypothesis
 
         for i, stack in enumerate(stacks[:-1]):
             for h in sorted(stack.values(), key=lambda h: -h.logprob)[:MAX_HYPS]:
@@ -410,8 +410,9 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
                 decoder_attentions[i] = decoder_attention.data.squeeze()
                 topv, topi = decoder_output.data.topk(MAX_HYPS) # since we are selecting MAX_HYPS at most, we only need to pick the 10 best from each possible translation
                 for ind in range(len(topi)):
-                    new_hypothesis = hypothesis(topv[ind], decoder_hidden, decoder_context, topi[ind].item(), h.words.append(tgt_vocab.index2word[topi[ind].item()]))
-                    stacks[i + 1][new_hypothesis.words] = new_hypothesis
+                    new_hypothesis = hypothesis(h.logprob + topv.flatten()[ind], decoder_hidden, decoder_context, topi.flatten()[ind], h.words + [tgt_vocab.index2word[topi.flatten()[ind].item()]])
+                    if new_hypothesis.word.item() not in stack or stack[new_hypothesis.word.item()].logprob < new_hypothesis.logprob:  # second case is recombination
+                        stacks[i + 1][tgt_vocab.index2word[topi.flatten()[ind].item()]] = new_hypothesis
         winner = max(stacks[-1].values(), key=lambda h: h.logprob)
 
         return winner.words, decoder_attentions[:i + 1]

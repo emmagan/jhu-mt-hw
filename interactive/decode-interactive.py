@@ -216,17 +216,17 @@ class AttnDecoderRNN(nn.Module):
         return torch.zeros(1, 1, self.hidden_size, device=device)
 
 
-def translate_random_sentence(encoder, decoder, pairs, src_vocab, tgt_vocab, n=1):
+def translate_random_sentence(encoder, decoder, pairs, src_vocab, tgt_vocab, optimizer, criterion, n=1):
     for i in range(n):
         pair = random.choice(pairs)
         print('>', pair[0])
         print('=', pair[1])
-        output_words, attentions = translate(encoder, decoder, pair[0], src_vocab, tgt_vocab)
+        output_words, attentions = translate(encoder, decoder, pair[0], src_vocab, tgt_vocab, optimizer, criterion)
         output_sentence = ' '.join(output_words)
         print('<', output_sentence)
         print('')
 
-def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_LENGTH):
+def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, optimizer, criterion, max_length=MAX_LENGTH):
     """
     runs tranlsation, returns the output and attention
     """
@@ -237,88 +237,113 @@ def translate(encoder, decoder, sentence, src_vocab, tgt_vocab, max_length=MAX_L
     encoder.eval()
     decoder.eval()
 
-    with torch.no_grad():
-        input_tensor = tensor_from_sentence(src_vocab, sentence)
-        input_length = input_tensor.size()[0]
-        encoder_hidden = encoder.get_initial_hidden_state()
-        encoder_context = encoder.get_initial_hidden_state()
 
-        encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
+    input_tensor = tensor_from_sentence(src_vocab, sentence)
+    input_length = input_tensor.size()[0]
+    encoder_hidden = encoder.get_initial_hidden_state()
+    encoder_context = encoder.get_initial_hidden_state()
 
-        for ei in range(input_length):
-            encoder_output, encoder_hidden, encoder_context = encoder(input_tensor[ei], encoder_hidden, encoder_context)
-            encoder_outputs[ei] += encoder_output[0, 0]
+    encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
 
-        decoder_input = torch.tensor([[SOS_index]], device=device)  # SOS
+    for ei in range(input_length):
+        encoder_output, encoder_hidden, encoder_context = encoder(input_tensor[ei], encoder_hidden, encoder_context)
+        encoder_outputs[ei] += encoder_output[0, 0]
 
-        decoder_hidden = encoder_hidden
-        decoder_context = encoder_context
+    decoder_input = torch.tensor([[SOS_index]], device=device)  # SOS
 
-        decoded_words = []
-        decoder_attentions = torch.zeros(max_length, max_length)
+    decoder_hidden = encoder_hidden
+    decoder_context = encoder_context
 
-        hypothesis = namedtuple("hypothesis", "logprob, hidden, context, word, words")
-        initial_hypothesis = hypothesis(0.0, decoder_hidden, decoder_context, torch.tensor(SOS_index), [SOS_token])
+    decoded_words = []
+    decoder_attentions = torch.zeros(max_length, max_length)
 
-        translations = [[] for _ in range(MAX_HYPS)]
-        map(lambda x: x.append(initial_hypothesis), translations)
+    hypothesis = namedtuple("hypothesis", "logprob, hidden, context, word, words")
+    initial_hypothesis = hypothesis(0.0, decoder_hidden, decoder_context, torch.tensor(SOS_index), [SOS_token])
 
-        stacks = [{} for _ in range(max_length)] + [{}]
-        stacks[0][SOS_token] = initial_hypothesis
+    translations = [[] for _ in range(MAX_HYPS)]
+    map(lambda x: x.append(initial_hypothesis), translations)
 
-        for i, stack in enumerate(stacks[:-1]):
-            print('--------- pass -----------')
-            for h in sorted(stack.values(), key=lambda h: -h.logprob)[:MAX_HYPS]:
-                decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(h.word, h.hidden,
-                                                                                             h.context, encoder_outputs)
-                decoder_attentions[i] = decoder_attention.data.squeeze()
-                topv, topi = decoder_output.data.topk(
-                    MAX_HYPS)  # since we are selecting MAX_HYPS at most, we only need to pick the 10 best from each possible translation
-                # print(topi.shape)
-                for ind in range(topi.shape[1]):
-                    print(f"{ind}. {tgt_vocab.index2word[topi.flatten()[ind].item()]}: {topv.flatten()[ind]}")
+    stacks = [{} for _ in range(max_length)] + [{}]
+    stacks[0][SOS_token] = initial_hypothesis
 
-                print(f"{MAX_HYPS}: enter another word...")
+    optimizer.zero_grad()
 
+    length = 0
 
-                print(f"current sentence: {h.words}")
+    for i, stack in enumerate(stacks[:-1]):
+        length = i
+        for h in sorted(stack.values(), key=lambda h: -h.logprob)[:MAX_HYPS]:
+            decoder_output, decoder_hidden, decoder_context, decoder_attention = decoder(h.word, h.hidden,
+                                                                                         h.context, encoder_outputs)
+            decoder_attentions[i] = decoder_attention.data.squeeze()
+            topv, topi = decoder_output.data.topk(
+                MAX_HYPS)  # since we are selecting MAX_HYPS at most, we only need to pick the 10 best from each possible translation
+            # print(topi.shape)
+            for ind in range(topi.shape[1]):
+                print(f"{ind}. {tgt_vocab.index2word[topi.flatten()[ind].item()]}: {topv.flatten()[ind]}")
 
-                best = int(input("enter the index of the best translation: "))
-
-                if best == MAX_HYPS:
-
-                    word = input("enter the desired word: ")
-
-                    while word not in tgt_vocab.word2index:
-                        word = input(f"\"{word}\" is not in the vocab. Please enter another word: ")
+            print(f"{MAX_HYPS}: enter another word...")
 
 
-                    word_index = tgt_vocab.word2index[word]
+            print(f"current sentence: {h.words}")
 
-                    new_hypothesis = hypothesis(h.logprob + decoder_output.data.flatten()[word_index], decoder_hidden, decoder_context,
-                                                torch.tensor(word_index),
-                                                h.words + [word])
-                    if new_hypothesis.word not in stack or stack[
-                        new_hypothesis.word].logprob < new_hypothesis.logprob:  # second case is recombination
-                        stacks[i + 1][word] = new_hypothesis
+            best = int(input("enter the index of the best translation: "))
 
-                    if word_index == EOS_index:
-                        # decoded_words.append('<EOS>')
-                        winner = max(stack.values(), key=lambda h: h.logprob)
+            loss = 0
 
-                        return winner.words, decoder_attentions[:i + 1]
-                else:
-                    new_hypothesis = hypothesis(h.logprob + topv.flatten()[best], decoder_hidden, decoder_context,
-                                                topi.flatten()[best],
-                                                h.words + [tgt_vocab.index2word[topi.flatten()[best].item()]])
-                    if new_hypothesis.word.item() not in stack or stack[new_hypothesis.word.item()].logprob < new_hypothesis.logprob:  # second case is recombination
-                        stacks[i + 1][tgt_vocab.index2word[topi.flatten()[best].item()]] = new_hypothesis
+            if best == MAX_HYPS:
 
-                    if topi.flatten()[best].item() == EOS_index:
-                        # decoded_words.append('<EOS>')
-                        winner = max(stack.values(), key=lambda h: h.logprob)
+                word = input("enter the desired word: ")
 
-                        return winner.words, decoder_attentions[:i + 1]
+                while word not in tgt_vocab.word2index:
+                    word = input(f"\"{word}\" is not in the vocab. Please enter another word: ")
+
+
+                word_index = tgt_vocab.word2index[word]
+
+                loss += criterion(decoder_output.reshape(1, -1), torch.tensor(best).reshape(-1))
+
+                new_hypothesis = hypothesis(h.logprob + decoder_output.data.flatten()[word_index], decoder_hidden, decoder_context,
+                                            torch.tensor(word_index),
+                                            h.words + [word])
+                if new_hypothesis.word not in stack or stack[
+                    new_hypothesis.word].logprob < new_hypothesis.logprob:  # second case is recombination
+                    stacks[i + 1][word] = new_hypothesis
+
+                if word_index == EOS_index:
+                    # decoded_words.append('<EOS>')
+                    winner = max(stack.values(), key=lambda h: h.logprob)
+
+                    loss.backward()
+                    optimizer.step()
+
+                    return winner.words, decoder_attentions[:i + 1]
+            else:
+                new_hypothesis = hypothesis(h.logprob + topv.flatten()[best], decoder_hidden, decoder_context,
+                                            topi.flatten()[best],
+                                            h.words + [tgt_vocab.index2word[topi.flatten()[best].item()]])
+
+                loss += criterion(decoder_output.reshape(1, -1), torch.tensor(best).reshape(-1))
+
+
+                if new_hypothesis.word.item() not in stack or stack[new_hypothesis.word.item()].logprob < new_hypothesis.logprob:  # second case is recombination
+                    stacks[i + 1][tgt_vocab.index2word[topi.flatten()[best].item()]] = new_hypothesis
+
+                if topi.flatten()[best].item() == EOS_index:
+                    # decoded_words.append('<EOS>')
+                    winner = max(stack.values(), key=lambda h: h.logprob)
+
+                    loss.backward()
+                    optimizer.step()
+
+                    return winner.words, decoder_attentions[:i + 1]
+
+    winner = max(stacks[-1].values(), key=lambda h: h.logprob)
+
+    loss.backward()
+    optimizer.step()
+
+    return winner.words, decoder_attentions[:length + 1]
 
 
 
@@ -341,6 +366,8 @@ def main():
     ap.add_argument('--embedding_size', default=64, type=int)
     ap.add_argument('--hidden_size', default=256, type=int,
                     help='hidden size of encoder/decoder, also word vector size')
+    ap.add_argument('--initial_learning_rate', default=0.01, type=int,
+                    help='initial learning rate')
     args = ap.parse_args()
 
     # process the training, dev, test files
@@ -373,9 +400,9 @@ def main():
     dev_pairs = split_lines(args.dev_file)
 
     # set up optimization/loss
-    # params = list(encoder.parameters()) + list(decoder.parameters())  # .parameters() returns generator
-    # optimizer = optim.Adam(params, lr=args.initial_learning_rate)
-    # criterion = nn.NLLLoss()
+    params = list(encoder.parameters()) + list(decoder.parameters()) + list(input_embeddings.parameters()) + list(output_embeddings.parameters()) # .parameters() returns generator
+    optimizer = optim.Adam(params, lr=args.initial_learning_rate)
+    criterion = nn.NLLLoss()
 
     # optimizer may have state
     # if checkpointed, load saved state
@@ -387,7 +414,7 @@ def main():
     print_loss_total = 0  # Reset every args.print_every
 
     # translate from the dev set
-    translate_random_sentence(encoder, decoder, dev_pairs, src_vocab, tgt_vocab, n=2)
+    translate_random_sentence(encoder, decoder, dev_pairs, src_vocab, tgt_vocab, optimizer, criterion, n=10)
 
 
 

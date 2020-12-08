@@ -368,6 +368,7 @@ def main():
                     help='hidden size of encoder/decoder, also word vector size')
     ap.add_argument('--initial_learning_rate', default=0.01, type=int,
                     help='initial learning rate')
+    ap.add_argument('--num-sents', default=1)
     args = ap.parse_args()
 
     # process the training, dev, test files
@@ -414,9 +415,17 @@ def main():
     print_loss_total = 0  # Reset every args.print_every
 
     # translate from the dev set
-    translate_random_sentence(encoder, decoder, dev_pairs, src_vocab, tgt_vocab, optimizer, criterion, n=10)
+    translate_random_sentence(encoder, decoder, dev_pairs, src_vocab, tgt_vocab, optimizer, criterion, n=args.num_sents)
 
+    state = {'iter_num': iter_num,
+             'enc_state': encoder.state_dict(),
+             'dec_state': decoder.state_dict(),
+             'opt_state': optimizer.state_dict(),
+             'src_vocab': src_vocab,
+             'tgt_vocab': tgt_vocab,
+             }
 
+    torch.save(state, 'state_FINAL.pt')
 
 if __name__ == "__main__":
     main()
